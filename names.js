@@ -21,6 +21,26 @@
       unkillableThisRound: 'Deathless (this round)',
       support: 'Support',
     },
+    // Reminder text for the preview/inspector glossary (js/cardview.js).
+    keywordHelp: {
+      sentinel: 'Enemy units in this arena must attack this unit before any non-sentinel target or your base.',
+      saboteur: 'When attacking, this unit ignores sentinels and destroys the defender’s shields first.',
+      ambush: 'When played, this unit may immediately ready and attack an enemy unit.',
+      overwhelm: 'Damage beyond the defender’s remaining HP carries over to the enemy base.',
+      raid: 'This unit gets +X power while it is attacking.',
+      restore: 'When this unit attacks, heal X damage from your base.',
+      shielded: 'Enters play with a shield token; a shield absorbs one full hit, then breaks.',
+      grit: 'This unit gets +1 power for each damage on it.',
+      hidden: 'Cannot be attacked during the round it entered play.',
+      bounty: 'When this unit is defeated or captured, the OTHER player collects the listed reward.',
+      smuggle: 'While face-down as a resource, you may play this card for its smuggle cost; the top card of your deck replaces it.',
+      exploit: 'You may defeat up to X friendly units while playing this; each pays 2 of the cost.',
+      piloting: 'May instead be played for its piloting cost as an upgrade aboard a friendly vehicle without a pilot.',
+      coordinate: 'Active while you control 3 or more units.',
+      plot: 'While face-down as a resource, you may play this card (paying its cost) when you deploy a leader.',
+      support: 'When played, you may attack with another friendly unit, lending it this unit’s attack abilities.',
+      unkillableThisRound: 'This round, running out of HP does not defeat this unit.',
+    },
     decks: {},     // deckId -> display name
     ui: {
       round: 'Round', yourTurn: 'Your move', enemyTurn: 'Opponent is acting…',

@@ -52,7 +52,7 @@ for (const p of plan) {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'black-forest-labs/FLUX.1-schnell', prompt,
-        size: '512x512', response_format: 'b64_json' }),
+        size: '512x704', response_format: 'b64_json' }),
     });
     if (r.status !== 200) {
       const body = await r.text();
