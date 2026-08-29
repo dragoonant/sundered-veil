@@ -11,7 +11,7 @@
     'combatConstant', 'onDefeatUnit', 'bounty', 'onSmuggle', 'onUpgradePlayed',
     'whenCombatDamaged', 'combatAura', 'onOpponentDraw', 'whenHealed',
     'onIndirectUnitDamage', 'onDeployPilot', 'onPlayAsPilot', 'onNonCombatDamage',
-    'onForceUnitAttack'];
+    'onForceUnitAttack', 'onRevealOrDiscard', 'onFriendlyAttack'];
   const ASPECTS = ['command', 'aggression', 'cunning', 'vigilance', 'heroism', 'villainy'];
 
   function fail(id, msg) { throw new Error('content error [' + id + ']: ' + msg); }

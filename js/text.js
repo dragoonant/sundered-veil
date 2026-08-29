@@ -32,11 +32,13 @@
     if (sel.hasExperience) s += ' that has an experience token';
     if (sel.hasSentinel) s += ' with Sentinel';
     if (sel.remHpLessThanSourcePower) s += ' with less remaining HP than this unit’s power';
+    if (sel.remHpLessThanSourceRemHp) s += ' with less remaining HP than the attached unit';
     if (sel.maxRemHp != null) s += ' with ' + sel.maxRemHp + ' or less remaining HP';
     if (sel.powerLessThanSource) s += ' with less power than this unit';
     if (sel.exhaustedOnly) s += ' that is exhausted';
     if (sel.nonLeader) s += ' (non-leader)';
     if (sel.nonUnique) s += ' (non-champion)';
+    if (sel.damagedBaseThisPhase) s += ' that dealt damage to a base this phase';
     if (sel.damaged) s += ' that is damaged';       // engine: selectorCandidates .damaged
     return s;
   }
@@ -224,6 +226,24 @@
       return 'put up to ' + op.upTo + ' matching cards from your discard pile on the bottom of your deck';
     },
     echoNextOnPlay: function () { return 'the next time you use a when-played ability this round, use it again'; },
+    discloseReveal: function (op) {
+      return 'reveal cards from your hand showing these icons: ' +
+        (op.aspects || []).map(function (a) { return SB.names.aspects[a] || a; }).join(', ');
+    },
+    roundCombatPenaltyVsBase: function (op) {
+      return 'for this round, each enemy unit gets ' + op.amount + '/+0 while attacking a base';
+    },
+    jailExhaust: function (op) { return 'exhaust ' + targetText(op) + ' — it cannot ready while this unit is in play'; },
+    suppressKeywords: function (op) { return targetText(op) + ' loses all keywords for this round'; },
+    plotDiscount: function (op) { return 'the next scheme card you play this round costs ' + op.amount + ' less'; },
+    plotOffer: function () { return 'you may play scheme cards from your resources'; },
+    massAttack: function () { return 'attack with any number of other units, one at a time, even exhausted ones — they cannot attack bases'; },
+    captureBudget: function (op) {
+      return targetText(op) + ' captures any number of enemy non-leader units with total remaining HP ' + op.budget + ' or less';
+    },
+    revealHand: function () { return 'look at the opponent’s hand'; },
+    experienceAll: function (op) { return 'give an experience token to each ' + scopeNoun(op.scope); },
+    discardFromOpponentHandChoice: function () { return 'look at the opponent’s hand and discard a card from it'; },
     damagePerExploited: function () {
       return 'for each unit exploited while playing this card, you may deal damage equal to its power to an enemy unit';
     },
@@ -245,6 +265,7 @@
   }
   function filterNoun(f) {
     f = f || {};
+    if (f.hasPlot) return 'a card with ' + (SB.names.keywords.plot || 'Plot');
     const parts = [];
     if (f.aspect) parts.push(SB.names.aspects[f.aspect] || f.aspect);
     if (f.trait) parts.push(SB.names.traits[f.trait] || f.trait);
@@ -276,6 +297,8 @@
     onPlayAsPilot: 'When played as a pilot',
     onNonCombatDamage: 'When you deal non-combat damage',
     onForceUnitAttack: 'When a friendly mystic unit attacks',
+    onRevealOrDiscard: 'When you reveal or discard cards from your hand',
+    onFriendlyAttack: 'When another matching friendly unit attacks',
   };
 
   const conditionText = {
@@ -284,6 +307,12 @@
     },
     hasInitiative: function () { return 'if you have the initiative'; },
     hasForce: function () { return 'while you hold your power token'; },
+    controlLeaderUnit: function () { return 'if you control a leader unit'; },
+    defenderExhausted: function () { return 'if the defender is exhausted'; },
+    canDisclose: function (c) {
+      return 'if you can reveal the required icons: ' +
+        (c.aspects || []).map(function (a) { return SB.names.aspects[a] || a; }).join(', ');
+    },
     isBearer: function () { return 'if the upgrade was played on this unit'; },
     baseDamaged: function () { return 'if your base is damaged'; },
     enemyBaseDamaged: function () { return 'if the enemy base is damaged'; },

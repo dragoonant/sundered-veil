@@ -40,6 +40,12 @@
         if (sel.anyTrait && !sel.anyTrait.some(function (tr) { return SB.unitTraits(state, u).indexOf(tr) >= 0; })) return;
         if (sel.hasExperience && !(u.experience > 0)) return;
         if (sel.hasSentinel && !SB.hasKeyword(state, u, 'sentinel')) return;
+        if (sel.remHpLessThanSourceRemHp) {
+          const src = SB.findUnit(state, ctx.sourceUid);
+          if (!src || SB.unitRemainingHp(state, u) >= SB.unitRemainingHp(state, src)) return;
+        }
+        if (sel.damagedBaseThisPhase &&
+            (state.baseDamagersThisPhase || []).indexOf(u.uid) < 0) return;
         if (sel.remHpLessThanSourcePower) {
           const src = SB.findUnit(state, ctx.sourceUid);
           if (!src || SB.unitRemainingHp(state, u) >= SB.unitPower(state, src)) return;
@@ -335,6 +341,35 @@
       case 'saved': {
         const has = SB.efx(state, ctx)[cond.name] != null;
         return cond.not ? !has : has;
+      }
+      case 'controlLeaderUnit':
+        return SB.allUnits(state, controller).some(function (u) {
+          return SB.card(u.cardId).type === 'leader' ||
+            u.upgrades.some(function (inst) { return !!inst.leaderPilot; });
+        });
+      case 'defenderExhausted': {
+        const t = ctx.attackTarget;
+        const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+        return !!u && u.exhausted;
+      }
+      case 'canDisclose': {
+        // Can the hand cover the required multiset of aspect icons?
+        const need = (cond.aspects || []).slice();
+        const hand = state.players[controller].hand.map(function (inst) {
+          return (SB.card(inst.cardId).aspects || []).slice();
+        });
+        // Greedy bipartite-ish cover: try to assign each needed icon to a distinct
+        // card (a card can cover multiple of its own icons).
+        // Simplification faithful to the printed rule: reveal cards "with these
+        // aspects among them" — a single card may cover several required icons.
+        const pool = [];
+        hand.forEach(function (a) { a.forEach(function (x) { pool.push(x); }); });
+        return need.every(function (x) {
+          const i = pool.indexOf(x);
+          if (i < 0) return false;
+          pool.splice(i, 1);
+          return true;
+        });
       }
       case 'hasForce':
         return !!state.players[controller].force;

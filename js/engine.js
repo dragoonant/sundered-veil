@@ -348,6 +348,7 @@
       p.leader.uid = inst.uid;
       bearer.upgrades.push(inst);
       state.log.push({ type: 'deployLeaderPilot', player: me, cardId: p.leader.cardId, uid: bearer.uid, sound: 'deploy' });
+      state.queue.push({ step: 'plotOffer', player: me });
       (lc.pilotSide.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'onDeployPilot') return;
         SB.queueEffects(state, me, ab.effects, { sourceUid: bearer.uid, cardId: p.leader.cardId, condition: ab.condition });
@@ -362,6 +363,7 @@
       state[leaderCard.deployedSide.arena || 'ground'].push(unit);
       state.log.push({ type: 'deployLeader', player: me, cardId: p.leader.cardId, sound: 'deploy' });
       SB.fireTriggers(state, 'onDeploy', unit, { sourceUid: unit.uid });
+      state.queue.push({ step: 'plotOffer', player: me });
     } else if (action.type === 'leaderAction') {
       const ab = SB.card(p.leader.cardId).leaderSide.abilities[action.abilityIndex];
       expect(ab && ab.trigger === 'action' && !p.leader.exhausted, action);
@@ -575,7 +577,18 @@
       if (healed > 0) state.log.push({ type: 'baseHeal', player: attacker.owner, amount: healed, sound: 'heal' });
     }
     if (item.target.kind === 'base') {
-      SB.damageBase(state, item.target.player, power, 'attack');
+      (state.tempCombatMods || []).forEach(function (m) {
+        if (m.vsBase && attacker.owner !== m.enemyOf) return; // penalty applies to enemies of m.enemyOf
+      });
+      let basePower = power;
+      (state.tempCombatMods || []).forEach(function (m) {
+        if (m.vsBase && attacker.owner === SB.other(m.enemyOf)) basePower = Math.max(0, basePower + m.power);
+      });
+      SB.damageBase(state, item.target.player, basePower, 'attack');
+      if (basePower > 0) {
+        state.baseDamagersThisPhase = state.baseDamagersThisPhase || [];
+        state.baseDamagersThisPhase.push(attacker.uid);
+      }
       return;
     }
     const defender = SB.findUnit(state, item.target.uid);
@@ -606,6 +619,8 @@
     const defeated = !SB.findUnit(state, defender.uid);
     if (overwhelm && !defShielded && power > defHpLeft) {
       SB.damageBase(state, defender.owner, power - defHpLeft, 'overwhelm');
+      state.baseDamagersThisPhase = state.baseDamagersThisPhase || [];
+      state.baseDamagersThisPhase.push(attacker.uid);
     }
     if (defeated) {
       const atkAlive = SB.findUnit(state, attacker.uid);
@@ -631,6 +646,15 @@
       const defender = SB.findUnit(state, target.uid);
       if (defender) SB.fireTriggers(state, 'whenAttacked', defender, { sourceUid: defender.uid, attackerUid: attacker.uid });
     }
+    // "When another friendly <trait> unit attacks" observers.
+    SB.allUnits(state, attacker.owner).forEach(function (obs) {
+      if (obs.uid === attacker.uid) return;
+      (SB.unitDef(obs).abilities || []).forEach(function (ab) {
+        if (ab.trigger !== 'onFriendlyAttack') return;
+        if (ab.attackerTrait && SB.unitTraits(state, attacker).indexOf(ab.attackerTrait) < 0) return;
+        SB.queueEffects(state, obs.owner, ab.effects, { sourceUid: obs.uid, cardId: obs.cardId, condition: ab.condition });
+      });
+    });
     // Base ability: gain the Force when a friendly Force unit attacks.
     const baseCard = SB.card(state.players[attacker.owner].base.cardId);
     if (SB.unitTraits(state, attacker).indexOf('tr12') >= 0) {
@@ -796,7 +820,11 @@
     state.defeatedThisPhase = [];
     state.efx = {};
     state.efxExploit = {};
-    state.players.forEach(function (p) { p.playedThisPhase = []; p.eventsThisRound = 0; p.discounts = []; });
+    state.baseDamagersThisPhase = [];
+    state.players.forEach(function (p) {
+      p.playedThisPhase = []; p.eventsThisRound = 0; p.discounts = []; p.plotDiscount = 0;
+      delete p.echoNextOnPlay;
+    });
     state.log.push({ type: 'actionPhase', round: state.round });
   }
 
@@ -865,8 +893,12 @@
 
   function finishRegroup(state) {
     // Ready everything, clear temp buffs, next round.
+    state.tempCombatMods = [];
+    state.baseDamagersThisPhase = [];
     SB.allUnits(state).forEach(function (u) {
+      delete u.keywordsSuppressed;
       if (u.stunned) { delete u.stunned; } // stunned units miss this ready step
+      else if (SB.isJailed(state, u)) { /* jailed units stay exhausted */ }
       else u.exhausted = false;
       u.temp = { power: 0, hp: 0 };
       delete u.tempKeywords;

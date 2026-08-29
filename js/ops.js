@@ -71,6 +71,7 @@
   };
   const baseHasKeyword = SB.hasKeyword;
   SB.hasKeyword = function (state, unit, k) {
+    if (unit.keywordsSuppressed) return false;
     if (baseHasKeyword(state, unit, k)) return true;
     if (unit.tempKeywords && unit.tempKeywords.indexOf(k) >= 0) return true;
     return SB.auraGrants(state, unit).some(function (g) {
@@ -235,7 +236,12 @@
   // Released (returned to owner's play area, exhausted) if the captor leaves play.
   O.capture = function (state, item, target) {
     const victim = SB.findUnit(state, target.uid);
-    const captor = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
+    let captorRef = item.ctx && item.ctx.sourceUid;
+    if (item.op.captorSaved) {
+      const t = SB.efx(state, item.ctx)[item.op.captorSaved];
+      captorRef = t && t.uid;
+    }
+    const captor = SB.findUnit(state, captorRef);
     if (!victim || !captor) return;
     SB.collectBounties(state, victim);
     const arena = SB.arenaOf(state, victim);
@@ -355,7 +361,10 @@
     const cands = SB.selectorCandidates(state, item.controller, item.op.scope, item.ctx || {});
     cands.forEach(function (c) {
       const u = SB.findUnit(state, c.uid);
-      if (u && u.exhausted && !u.stunned) { u.exhausted = false; state.log.push({ type: 'readied', uid: u.uid }); }
+      if (u && u.exhausted && !u.stunned && !SB.isJailed(state, u)) {
+        u.exhausted = false;
+        state.log.push({ type: 'readied', uid: u.uid });
+      }
     });
   };
 
@@ -531,6 +540,224 @@
     state.log.push({ type: 'echoArmed', player: item.controller, sound: 'buff' });
   };
 
+  // Give an experience token to every unit matched by scope.
+  O.experienceAll = function (state, item) {
+    const cands = SB.selectorCandidates(state, item.controller, item.op.scope, item.ctx || {});
+    cands.forEach(function (c) {
+      const u = SB.findUnit(state, c.uid);
+      if (u) { u.experience += 1; state.log.push({ type: 'experience', uid: u.uid, sound: 'buff' }); }
+    });
+  };
+
+  // Disclose: reveal hand cards covering the aspect icons (public log; simplified
+  // to an all-at-once reveal — the gating happened via condition canDisclose).
+  O.discloseReveal = function (state, item) {
+    state.log.push({ type: 'disclosed', player: item.controller, aspects: item.op.aspects, notice: true });
+    if (SB.fireLeaderTrigger) SB.fireLeaderTrigger(state, item.controller, 'onRevealOrDiscard', {});
+    SB.allUnits(state, item.controller).forEach(function (u) {
+      SB.fireTriggers(state, 'onRevealOrDiscard', u, { sourceUid: u.uid });
+    });
+  };
+
+  // Round-long combat penalty for enemy units attacking a base.
+  O.roundCombatPenaltyVsBase = function (state, item) {
+    state.tempCombatMods = state.tempCombatMods || [];
+    state.tempCombatMods.push({ enemyOf: item.controller, vsBase: true, power: item.op.amount });
+    state.log.push({ type: 'globalCombatMod', player: item.controller, sound: 'buff' });
+  };
+
+  // Exhaust an enemy unit and keep it exhausted while this unit remains in play.
+  O.jailExhaust = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    const src = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
+    if (!u || !src) return;
+    u.exhausted = true;
+    src.jails = u.uid;
+    state.log.push({ type: 'jailed', uid: u.uid, by: src.uid, sound: 'ability', notice: true });
+  };
+
+  // Suppress all keywords on a unit for this round.
+  O.suppressKeywords = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (!u) return;
+    u.keywordsSuppressed = true;
+    state.log.push({ type: 'keywordsSuppressed', uid: u.uid, sound: 'ability' });
+  };
+
+  // Plot support: discount for the next plot card this phase.
+  O.plotDiscount = function (state, item) {
+    const p = state.players[item.controller];
+    p.plotDiscount = (p.plotDiscount || 0) + item.op.amount;
+    state.log.push({ type: 'plotDiscount', player: item.controller, sound: 'buff' });
+  };
+
+  // Offer playing Plot cards from resources (used by leader deploys and effects).
+  O.plotOffer = function (state, item) {
+    state.queue.unshift({ step: 'plotOffer', player: item.controller });
+  };
+
+  SB.queueSteps.plotOffer = {
+    actions: function (state, itemStep) {
+      const p = state.players[itemStep.player];
+      const acts = [{ type: 'plotPlay', player: itemStep.player, resourceIndex: -1 }];
+      p.resources.forEach(function (res, ri) {
+        const card = SB.cards[res.instance.cardId];
+        if (!card || !(card.keywords || []).some(function (k) { return k.k === 'plot'; })) return;
+        if (p.deck.length === 0) return;
+        const cost = Math.max(0, SB.cardCost(state, itemStep.player, card.id) - (p.plotDiscount || 0));
+        if (cost > SB.readyResources(state, itemStep.player)) return;
+        if (card.type === 'unit' && card.unique &&
+            SB.allUnits(state, itemStep.player).some(function (u) { return u.cardId === card.id; })) return;
+        acts.push({ type: 'plotPlay', player: itemStep.player, resourceIndex: ri, cardId: card.id });
+      });
+      return acts.length > 1 ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.resourceIndex < 0) return;
+      const p = state.players[itemStep.player];
+      const res = p.resources[action.resourceIndex];
+      const card = SB.card(action.cardId);
+      const cost = Math.max(0, SB.cardCost(state, itemStep.player, card.id) - (p.plotDiscount || 0));
+      p.plotDiscount = 0;
+      // pay
+      let left = cost;
+      for (let i = 0; i < p.resources.length && left > 0; i++) {
+        if (!p.resources[i].exhausted) { p.resources[i].exhausted = true; left--; }
+      }
+      const wasExhausted = res.exhausted;
+      const inst = res.instance;
+      p.resources[action.resourceIndex] = { instance: p.deck.shift(), exhausted: wasExhausted };
+      p.playedThisPhase = p.playedThisPhase || [];
+      p.playedThisPhase.push(inst.cardId);
+      state.log.push({ type: 'plotPlayed', player: itemStep.player, cardId: inst.cardId, sound: 'play' });
+      if (card.type === 'unit') {
+        const unit = SB.makeUnit(state, inst.cardId, itemStep.player);
+        unit.uid = inst.uid;
+        state[card.arena].push(unit);
+        if (SB.hasKeyword(state, unit, 'shielded')) { unit.shields += 1; state.log.push({ type: 'shield', uid: unit.uid, sound: 'shield' }); }
+        if (SB.hasKeyword(state, unit, 'ambush')) {
+          state.queue.push({ step: 'effect', controller: itemStep.player, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
+            op: { op: 'ambushAttack', target: null } });
+        }
+        SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
+      } else if (card.type === 'event') {
+        p.discard.push(inst);
+        const ab = (card.abilities || []).find(function (a) { return a.trigger === 'onPlay'; });
+        if (ab) SB.queueEffects(state, itemStep.player, ab.effects, { cardId: inst.cardId, eventUid: inst.uid });
+      } else if (card.type === 'upgrade') {
+        // Attach: queue a pick for the attach target.
+        state.queue.unshift({ step: 'plotAttachPick', player: itemStep.player, inst: inst });
+      }
+      // Offer further plot cards.
+      state.queue.push({ step: 'plotOffer', player: itemStep.player });
+    },
+  };
+
+  SB.queueSteps.plotAttachPick = {
+    actions: function (state, itemStep) {
+      const card = SB.card(itemStep.inst.cardId);
+      const acts = [];
+      SB.allUnits(state).forEach(function (u) {
+        if (card.attachTo === 'friendly' && u.owner !== itemStep.player) return;
+        if (card.attachTo === 'enemy' && u.owner === itemStep.player) return;
+        if (card.attachFilter) {
+          const f = card.attachFilter;
+          const traits = SB.unitTraits(state, u);
+          if (f.notTrait && traits.indexOf(f.notTrait) >= 0) return;
+          if (f.trait && traits.indexOf(f.trait) < 0) return;
+          if (f.uniqueOnly && !SB.card(u.cardId).unique) return;
+        }
+        acts.push({ type: 'plotAttach', player: itemStep.player, uid: u.uid });
+      });
+      return acts.length ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      const u = SB.findUnit(state, action.uid);
+      if (!u) return;
+      u.upgrades.push(itemStep.inst);
+      state.log.push({ type: 'attached', uid: u.uid, cardId: itemStep.inst.cardId, sound: 'attach' });
+    },
+  };
+
+  // Attack with any number of other friendly units (even exhausted), units only.
+  O.massAttack = function (state, item) {
+    state.queue.unshift({ step: 'massAttackPick', player: item.controller, exceptUid: item.ctx && item.ctx.sourceUid });
+  };
+  SB.queueSteps.massAttackPick = {
+    actions: function (state, itemStep) {
+      const acts = [{ type: 'massAttackChoose', player: itemStep.player, uid: null }];
+      SB.allUnits(state, itemStep.player).forEach(function (u) {
+        if (u.uid === itemStep.exceptUid) return;
+        if (u.massAttacked) return;
+        if (SB.attackTargets(state, u).some(function (t) { return t.kind === 'unit'; })) {
+          acts.push({ type: 'massAttackChoose', player: itemStep.player, uid: u.uid });
+        }
+      });
+      return acts.length > 1 ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.uid == null) {
+        SB.allUnits(state, itemStep.player).forEach(function (u) { delete u.massAttacked; });
+        return;
+      }
+      const u = SB.findUnit(state, action.uid);
+      if (!u) return;
+      u.massAttacked = true;
+      state.queue.unshift({ step: 'attackTargetChoice', player: itemStep.player, uid: u.uid,
+        bonusPower: 0, firstStrike: false, ready: true, optional: false, unitsOnly: true });
+      state.queue.push({ step: 'massAttackPick', player: itemStep.player, exceptUid: itemStep.exceptUid });
+    },
+  };
+
+  // Capture any number of enemy non-leader units with combined remaining HP <= budget.
+  O.captureBudget = function (state, item, target) {
+    // target = the friendly captor (chosen by target selector with saveTargetAs upstream
+    // or direct target).
+    state.queue.unshift({ step: 'captureBudgetPick', player: item.controller,
+      captorUid: target.uid, budget: item.op.budget });
+  };
+  SB.queueSteps.captureBudgetPick = {
+    actions: function (state, itemStep) {
+      const acts = [{ type: 'captureBudget', player: itemStep.player, uid: null }];
+      SB.allUnits(state).forEach(function (u) {
+        if (u.owner === itemStep.player) return;
+        if (SB.card(u.cardId).type === 'leader') return;
+        if (SB.unitRemainingHp(state, u) > itemStep.budget) return;
+        acts.push({ type: 'captureBudget', player: itemStep.player, uid: u.uid });
+      });
+      return acts.length > 1 ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.uid == null) return;
+      const victim = SB.findUnit(state, action.uid);
+      const captor = SB.findUnit(state, itemStep.captorUid);
+      if (!victim || !captor) return;
+      const hp = SB.unitRemainingHp(state, victim);
+      SB.collectBounties(state, victim);
+      const arena = SB.arenaOf(state, victim);
+      state[arena].splice(state[arena].indexOf(victim), 1);
+      captor.captured = captor.captured || [];
+      captor.captured.push({ uid: victim.uid, cardId: victim.cardId, owner: victim.owner, upgrades: victim.upgrades });
+      state.log.push({ type: 'captured', uid: victim.uid, cardId: victim.cardId, by: captor.uid, sound: 'capture' });
+      const rest = itemStep.budget - hp;
+      if (rest > 0) state.queue.unshift({ step: 'captureBudgetPick', player: itemStep.player,
+        captorUid: itemStep.captorUid, budget: rest });
+    },
+  };
+
+  // Look at an opponent's hand (revealed in the log).
+  O.revealHand = function (state, item) {
+    const opp = SB.other(item.controller);
+    state.log.push({ type: 'handRevealed', player: opp,
+      cards: state.players[opp].hand.map(function (i) { return i.cardId; }), notice: true });
+  };
+
+  // Reveal the opponent's hand and discard one chosen card from it (see DEVIATIONS.md).
+  O.discardFromOpponentHandChoice = function (state, item) {
+    O.revealHand(state, item);
+    state.queue.unshift({ step: 'discardChoice', player: SB.other(item.controller), forcedBy: item.controller, ctx: item.ctx });
+  };
+
   // ---- queue steps handled by the engine loop (registered here) -----------
   SB.queueSteps = SB.queueSteps || {};
 
@@ -538,8 +765,9 @@
     actions: function (state, itemStep) {
       const p = state.players[itemStep.player];
       if (p.hand.length === 0) return null; // auto-skip
+      const chooser = itemStep.forcedBy != null ? itemStep.forcedBy : itemStep.player;
       return p.hand.map(function (_, i) {
-        return { type: 'discardCard', player: itemStep.player, handIndex: i };
+        return { type: 'discardCard', player: chooser, targetPlayer: itemStep.player, handIndex: i };
       });
     },
     apply: function (state, itemStep, action) {
@@ -548,6 +776,10 @@
       p.discard.push(inst);
       if (itemStep.ctx) SB.efx(state, itemStep.ctx).lastDiscardedType = SB.card(inst.cardId).type;
       state.log.push({ type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
+      if (SB.fireLeaderTrigger) SB.fireLeaderTrigger(state, itemStep.player, 'onRevealOrDiscard', {});
+      SB.allUnits(state, itemStep.player).forEach(function (u) {
+        SB.fireTriggers(state, 'onRevealOrDiscard', u, { sourceUid: u.uid });
+      });
     },
   };
 
@@ -583,6 +815,7 @@
       const seen = p.deck.slice(0, depth);
       const matches = [];
       function matchOne(c, f) {
+        if (f.hasPlot && !(c.keywords || []).some(function (k) { return k.k === 'plot'; })) return false;
         if (f.type && c.type !== f.type) return false;
         if (f.trait && (c.traits || []).indexOf(f.trait) < 0) return false;
         if (f.maxCost != null && c.cost > f.maxCost) return false;

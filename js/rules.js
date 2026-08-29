@@ -29,7 +29,13 @@
     return ts;
   };
 
+  // Is this unit's readying blocked by an enemy jailer in play?
+  SB.isJailed = function (state, unit) {
+    return SB.allUnits(state).some(function (j) { return j.jails === unit.uid; });
+  };
+
   SB.unitKeywords = function (state, unit) {
+    if (unit.keywordsSuppressed) return [];
     // Keyword instances from the unit itself plus its upgrades. Duplicate keywords
     // stack for numeric ones (raid, restore) and are redundant for boolean ones.
     let kws = (SB.unitDef(unit).keywords || []).slice();
