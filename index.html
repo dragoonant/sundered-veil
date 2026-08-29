@@ -73,6 +73,7 @@
 <script src="data/names-3.js"></script>
 <script src="data/names-4.js"></script>
 <script src="js/logtext.js"></script>
+<script src="js/sound.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/ui.js"></script>
 <script>
@@ -84,7 +85,10 @@
     o.value = d; o.textContent = SB.names.decks[d] || d;
     sel.appendChild(o);
   });
+  SB.artUrl = function (cardId) { return 'art/' + cardId + '.png'; };
   function newGame() {
+    SB.sound.reset();
+    SB.sound.startAmbience();
     const deck = sel.value;
     const others = Object.keys(SB.decks).filter(function (d) { return d !== deck && d.indexOf('fixture') < 0; });
     const aiDeck = others[Math.floor(Math.random() * others.length)];
