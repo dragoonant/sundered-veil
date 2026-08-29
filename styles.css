@@ -1,0 +1,100 @@
+/* styles.css — board UI. Traps applied per CARD-GAME-LESSONS §7: no native image
+   drag, pointer-events on overlays, explicit grid widths. */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #10141c; color: #dfe6f0;
+  display: flex; flex-direction: column;
+}
+img { -webkit-user-drag: none; user-select: none; }
+
+#app { display: flex; flex-direction: column; height: 100%; }
+#topbar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: #171d29; border-bottom: 1px solid #2a3446; flex-wrap: wrap;
+}
+#status .big { font-size: 22px; font-weight: 700; }
+#status .turn { font-weight: 600; color: #ffd166; }
+#status .chip {
+  margin-left: 10px; padding: 2px 8px; border-radius: 10px;
+  background: #2a3446; font-size: 12px;
+}
+#status .chip.held { background: #b8860b; color: #10141c; font-weight: 700; }
+button, select {
+  background: #223049; color: #dfe6f0; border: 1px solid #3a4a68;
+  border-radius: 6px; padding: 6px 12px; font-size: 14px; cursor: pointer;
+}
+button:hover { background: #2c3e5f; }
+button:disabled { opacity: .4; cursor: default; }
+.action-btn { background: #35558a; }
+
+#board { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 6px 12px; }
+#enemy-row, #my-row { display: flex; align-items: center; gap: 14px; padding: 4px 0; }
+.leader-slot, .base-slot {
+  min-width: 130px; padding: 6px 10px; border: 1px solid #3a4a68; border-radius: 8px;
+  background: #1a2233; text-align: center;
+}
+.base-slot .hp { font-size: 18px; font-weight: 700; color: #7fd18b; }
+.counts { font-size: 13px; color: #93a3bd; }
+
+.arena {
+  position: relative; min-height: 96px; margin: 4px 0; padding: 6px 8px 6px 64px;
+  border: 1px dashed #2a3446; border-radius: 10px;
+}
+.arena-label {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%) rotate(-90deg);
+  transform-origin: center; font-size: 12px; letter-spacing: 2px; color: #55647e;
+  pointer-events: none;
+}
+.arena-row { display: flex; flex-wrap: wrap; gap: 6px; min-height: 44px; }
+
+.unit {
+  position: relative; width: 92px; padding: 4px 6px 4px; border-radius: 8px;
+  background: #202b40; border: 2px solid #33415e; cursor: default; font-size: 12px;
+}
+.unit .unit-art { height: 44px; border-radius: 5px; background: #141b2a center/cover; }
+.unit .card-name { font-weight: 600; margin-top: 2px; line-height: 1.15; }
+.unit .stats { font-weight: 700; color: #ffd166; }
+.unit.exhausted { transform: rotate(6deg); opacity: .75; }
+.unit.mine { border-color: #33415e; }
+.unit.theirs { background: #2b2230; border-color: #4b3350; }
+.unit.can-act { border-color: #5fa8ff; cursor: pointer; }
+.unit.selected { border-color: #ffd166; box-shadow: 0 0 8px #ffd16688; }
+.unit.targetable, .base-slot.targetable {
+  border-color: #ff6b6b; box-shadow: 0 0 8px #ff6b6b88; cursor: pointer;
+}
+.badge {
+  position: absolute; top: 2px; right: 2px; font-size: 11px; padding: 0 4px;
+  border-radius: 8px; background: #35558a;
+}
+.shield-badge { background: #3f7fbf; }
+.xp-badge { background: #7a5fbf; top: 18px; }
+.upg-badge { background: #5f8a3f; top: 34px; }
+
+#choice-bar, #mulligan-bar {
+  padding: 8px 12px; background: #2a2233; border: 1px solid #574266;
+  border-radius: 8px; margin: 4px 0; display: flex; gap: 10px; align-items: center;
+}
+#hand-bar { display: flex; align-items: flex-end; gap: 8px; padding: 6px 0 2px; }
+#hand { display: flex; gap: 6px; flex-wrap: wrap; }
+.hand-card {
+  position: relative; width: 96px; min-height: 64px; padding: 6px 8px;
+  background: #1d2636; border: 2px solid #33415e; border-radius: 8px;
+  font-size: 12px;
+}
+.hand-card .cost {
+  position: absolute; top: -6px; left: -6px; width: 22px; height: 22px;
+  border-radius: 50%; background: #35558a; text-align: center; line-height: 22px;
+  font-weight: 700; font-size: 12px;
+}
+.hand-card .card-name { font-weight: 600; }
+.hand-card .stats { color: #ffd166; font-weight: 700; }
+.hand-card.can-act { border-color: #5fa8ff; cursor: pointer; }
+.hand-card.selected { border-color: #ffd166; }
+
+#log {
+  height: 120px; overflow-y: auto; padding: 6px 12px; font-size: 12px;
+  color: #93a3bd; background: #131824; border-top: 1px solid #2a3446;
+}
+.log-line { padding: 1px 0; }

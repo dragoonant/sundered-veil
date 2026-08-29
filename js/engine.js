@@ -44,6 +44,13 @@
         }
         return acts;
       }
+      if (SB.queueSteps && SB.queueSteps[item.step]) {
+        const stepActs = SB.queueSteps[item.step].actions(state, item);
+        if (stepActs && stepActs.length) return stepActs;
+        // Auto-skip steps are drained in apply's processQueue; reaching here with
+        // none available means the step is a no-op — treat as internal error.
+        throw new Error('queue step ' + item.step + ' offered no actions');
+      }
       // Head is an engine step that needs no choice — apply() would have drained it.
       throw new Error('queue head unresolved without choice: ' + state.queue[0].step);
     }
@@ -192,6 +199,11 @@
       }
       return;
     }
+    if (SB.queueSteps && SB.queueSteps[item.step]) {
+      state.queue.shift();
+      SB.queueSteps[item.step].apply(state, item, action);
+      return;
+    }
     // Target choice for the head effect.
     expect(action.type === 'choose' && item.candidates, action);
     state.queue.shift();
@@ -301,6 +313,11 @@
           op: { op: 'ambushAttack', target: null } });
       }
       SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
+      // "When you play another unit" observers on other friendly units.
+      SB.allUnits(state, me).forEach(function (obs) {
+        if (obs.uid === unit.uid) return;
+        SB.fireTriggers(state, 'onUnitPlayed', obs, { sourceUid: obs.uid, playedUid: unit.uid, playedCardId: unit.cardId });
+      });
     } else if (card.type === 'event') {
       p.discard.push(inst);
       SB.queueEffects(state, me, collectEffects(card), { cardId: inst.cardId });
@@ -328,6 +345,10 @@
     // fire triggers (which prepend). Restore heals in the damage step.
     state.queue.push({ step: 'combatDamage', attackerUid: attacker.uid, target: action.target, player: me });
     SB.fireTriggers(state, 'onAttack', attacker, { sourceUid: attacker.uid, attackTarget: action.target });
+    if (action.target.kind === 'unit') {
+      const defender = SB.findUnit(state, action.target.uid);
+      if (defender) SB.fireTriggers(state, 'whenAttacked', defender, { sourceUid: defender.uid, attackerUid: attacker.uid });
+    }
   }
 
   // Ambush is modeled as an op so it flows through the normal choice machinery.
@@ -387,6 +408,9 @@
       if (item.step === 'combatDamage') {
         state.queue.shift();
         resolveCombatDamage(state, item);
+        // "After this unit attacks" triggers, if the attacker survived.
+        const atk = SB.findUnit(state, item.attackerUid);
+        if (atk) SB.fireTriggers(state, 'onAttackEnds', atk, { sourceUid: atk.uid, attackTarget: item.target });
         continue;
       }
       if (item.step === 'effect') {
@@ -395,6 +419,12 @@
         if (state.queue.length > 0 && state.queue[0].step !== 'effect') continue;
         if (state.queue.length > 0) return; // drain stopped on a choice
         continue;
+      }
+      if (SB.queueSteps && SB.queueSteps[item.step]) {
+        // Auto-skip a step with no available actions (e.g. discard with empty hand).
+        const stepActs = SB.queueSteps[item.step].actions(state, item);
+        if (!stepActs || stepActs.length === 0) { state.queue.shift(); continue; }
+        return;
       }
       // mulligan / setupResources / regroupResource wait for player actions.
       return;
@@ -482,6 +512,7 @@
     SB.allUnits(state).forEach(function (u) {
       u.exhausted = false;
       u.temp = { power: 0, hp: 0 };
+      delete u.tempKeywords;
     });
     state.players.forEach(function (p) {
       p.resources.forEach(function (r) { r.exhausted = false; });

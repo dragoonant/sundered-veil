@@ -40,7 +40,59 @@
     exhaust: function (op) { return 'exhaust ' + describeTarget(op.target); },
     ready: function (op) { return 'ready ' + describeTarget(op.target); },
     returnHand: function (op) { return 'return ' + describeTarget(op.target) + ' to its owner’s hand'; },
+    damageAll: function (op) { return 'deal ' + op.amount + ' damage to each ' + scopeNoun(op.scope); },
+    buffAll: function (op) {
+      const stat = (op.power >= 0 ? '+' : '') + (op.power || 0) + '/' + (op.hp >= 0 ? '+' : '') + (op.hp || 0);
+      return 'give each ' + scopeNoun(op.scope) + ' ' + stat + ' for this round';
+    },
+    giveKeyword: function (op) {
+      return 'give ' + describeTarget(op.target) + ' ' + (SB.names.keywords[op.k] || op.k) + ' for this round';
+    },
+    discard: function (op) {
+      const who = op.who === 'self' ? 'you discard' : 'your opponent discards';
+      return who + ' ' + ((op.amount || 1) === 1 ? 'a card' : (op.amount + ' cards')) + ' from their hand';
+    },
+    discardRandom: function (op) {
+      const who = op.who === 'self' ? 'you discard' : 'your opponent discards';
+      return who + ' ' + ((op.amount || 1) === 1 ? 'a random card' : (op.amount + ' random cards'));
+    },
+    createToken: function (op) {
+      const n = op.amount || 1;
+      const tokenName = SB.names.card(op.token);
+      return 'create ' + (n === 1 ? 'a' : n) + ' ' + tokenName + ' token' + (n === 1 ? '' : 's');
+    },
+    capture: function (op) { return 'capture ' + describeTarget(op.target); },
+    healBase: function (op) { return 'heal ' + op.amount + ' damage from your base'; },
+    damageOwnBase: function (op) { return 'deal ' + op.amount + ' damage to your base'; },
+    indirectDamage: function (op) {
+      const who = op.who === 'self' ? 'you distribute' : 'your opponent distributes';
+      return who + ' ' + op.amount + ' indirect damage among their units and base';
+    },
+    searchDeck: function (op) {
+      let s = 'search ' + (op.depth ? 'the top ' + op.depth + ' cards of ' : '') + 'your deck for ' + filterNoun(op.filter) + ', reveal it, and draw it';
+      return s + ', then shuffle your deck';
+    },
+    readyResource: function (op) { return 'ready ' + (op.amount || 1) + ' of your resources'; },
+    exhaustResource: function (op) {
+      const who = op.who === 'self' ? 'your' : 'your opponent’s';
+      return 'exhaust ' + (op.amount || 1) + ' of ' + who + ' resources';
+    },
+    resourceTopDeck: function () { return 'put the top card of your deck into play as a resource'; },
   };
+
+  function scopeNoun(sel) {
+    return describeTarget(sel).replace(/^a /, '');
+  }
+  function filterNoun(f) {
+    f = f || {};
+    const parts = [];
+    if (f.aspect) parts.push(SB.names.aspects[f.aspect] || f.aspect);
+    if (f.trait) parts.push(SB.names.traits[f.trait] || f.trait);
+    let noun = f.type ? f.type : 'card';
+    let s = 'a ' + (parts.length ? parts.join(' ') + ' ' : '') + noun;
+    if (f.maxCost != null) s += ' that costs ' + f.maxCost + ' or less';
+    return s;
+  }
 
   const triggerText = {
     onPlay: 'When played',
@@ -48,6 +100,10 @@
     whenDefeated: 'When defeated',
     onDeploy: 'When deployed',
     onRegroup: 'At the start of the regroup phase',
+    onAttackEnds: 'After this unit attacks',
+    whenAttacked: 'When this unit is attacked',
+    onCardPlayed: 'When you play another card',
+    onUnitPlayed: 'When you play another unit',
   };
 
   const conditionText = {
@@ -59,6 +115,23 @@
   };
 
   function describeAbility(ab) {
+    if (ab.trigger === 'constant') {
+      // Keep in step with SB.auraGrants in ops.js.
+      const g = ab.grant;
+      const parts = [];
+      if (g.power || g.hp) parts.push('gets +' + (g.power || 0) + '/+' + (g.hp || 0));
+      (g.keywords || []).forEach(function (kw) {
+        parts.push('gains ' + (SB.names.keywords[kw.k] || kw.k) + (kw.n != null ? ' ' + kw.n : ''));
+      });
+      const scope = ab.scope && !ab.scope.self ? 'Each ' + scopeNoun(ab.scope) : 'This unit';
+      let s = scope + ' ' + parts.join(' and ') + '.';
+      if (ab.condition) {
+        const cf = conditionText[ab.condition.if];
+        if (!cf) throw new Error('no text for condition ' + ab.condition.if);
+        s = cap(cf(ab.condition)) + ', ' + s.charAt(0).toLowerCase() + s.slice(1);
+      }
+      return s;
+    }
     const clauses = ab.effects.map(function (op) {
       const fn = opText[op.op];
       if (!fn) throw new Error('no text for op ' + op.op);

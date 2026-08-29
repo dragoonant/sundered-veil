@@ -41,6 +41,16 @@ for (const row of db.data) {
   if (!canonIndex.has(k)) canonIndex.set(k, row);
 }
 
+// Fields like traits/arenas are sometimes a JSON array string, sometimes a plain
+// comma-separated string, sometimes already an array.
+function parseList(v) {
+  if (Array.isArray(v)) return v.map(String);
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return [];
+  if (s.startsWith('[')) { try { return JSON.parse(s).map(String); } catch (e) { /* fall through */ } }
+  return s.split(',').map(x => x.trim().replace(/^\[?"?|"?\]?$/g, '')).filter(Boolean);
+}
+
 function rowInfo(row0) {
   const row = canonIndex.get(canonKey(row0)) || row0;
   return {
@@ -50,8 +60,8 @@ function rowInfo(row0) {
     hp: row[F.hp] === '' ? null : Number(row[F.hp]),
     power: row[F.power] === '' ? null : Number(row[F.power]),
     aspects: [row[F.color], row[F.color2]].filter(Boolean),
-    traits: (row[F.traits] || '').split(',').map(s => s.trim()).filter(Boolean),
-    arenas: (row[F.arenas] || '').split(',').map(s => s.trim()).filter(Boolean),
+    traits: parseList(row[F.traits]),
+    arenas: parseList(row[F.arenas]),
     unique: row[F.uni] === '1' || row[F.uni] === 1 || row[F.uni] === true,
     text: row[F.text] || '', deployBox: row[F.deployBox] || '', epicAction: row[F.epicAction] || '',
     dotggId: row[F.id],

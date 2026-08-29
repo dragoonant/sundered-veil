@@ -6,7 +6,8 @@
 
   const CARD_TYPES = ['unit', 'event', 'upgrade', 'leader', 'base'];
   const ARENAS = ['ground', 'space'];
-  const TRIGGERS = ['onPlay', 'onAttack', 'whenDefeated', 'onDeploy', 'onRegroup', 'action'];
+  const TRIGGERS = ['onPlay', 'onAttack', 'whenDefeated', 'onDeploy', 'onRegroup', 'action',
+    'constant', 'onAttackEnds', 'whenAttacked', 'onCardPlayed', 'onUnitPlayed'];
   const ASPECTS = ['command', 'aggression', 'cunning', 'vigilance', 'heroism', 'villainy'];
 
   function fail(id, msg) { throw new Error('content error [' + id + ']: ' + msg); }
@@ -20,6 +21,13 @@
     });
     (def.abilities || []).forEach(function (ab) {
       if (TRIGGERS.indexOf(ab.trigger) < 0) fail(id, 'unknown trigger ' + ab.trigger);
+      if (ab.trigger === 'constant') {
+        if (!ab.grant) fail(id, 'constant ability without grant');
+        (ab.grant.keywords || []).forEach(function (kw) {
+          if (!SB.names.keywords[kw.k]) fail(id, 'unknown granted keyword ' + kw.k);
+        });
+        return;
+      }
       if (!Array.isArray(ab.effects) || ab.effects.length === 0) fail(id, 'ability without effects');
       ab.effects.forEach(function (op) {
         if (!SB.ops[op.op]) fail(id, 'unknown op ' + op.op);
