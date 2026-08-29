@@ -235,6 +235,10 @@
     p.hand.forEach(function (inst, i) {
       const card = SB.card(inst.cardId);
       const n = el('div', 'hand-card');
+      const hArt = el('div', 'hand-art');
+      const hImg = SB.artUrl && SB.artUrl(inst.cardId);
+      if (hImg) hArt.style.backgroundImage = 'url("' + hImg + '")';
+      n.appendChild(hArt);
       n.appendChild(el('div', 'cost', String(SB.cardCost(s, UI.humanSeat, inst.cardId))));
       n.appendChild(el('div', 'card-name', SB.names.card(inst.cardId)));
       if (card.type === 'unit') n.appendChild(el('div', 'stats', card.power + '/' + card.hp));

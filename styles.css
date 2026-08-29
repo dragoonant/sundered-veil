@@ -88,6 +88,7 @@ button:disabled { opacity: .4; cursor: default; }
   border-radius: 50%; background: #35558a; text-align: center; line-height: 22px;
   font-weight: 700; font-size: 12px;
 }
+.hand-card .hand-art { height: 40px; border-radius: 5px; background: #141b2a center/cover; margin-bottom: 3px; }
 .hand-card .card-name { font-weight: 600; }
 .hand-card .stats { color: #ffd166; font-weight: 700; }
 .hand-card.can-act { border-color: #5fa8ff; cursor: pointer; }
