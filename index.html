@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starbound Legions</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <span id="status"></span>
+    <span id="turn-buttons"></span>
+    <button id="undo-btn">Undo</button>
+    <select id="deck-select"></select>
+    <select id="difficulty-select">
+      <option value="easy">Easy</option>
+      <option value="mid" selected>Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+    <button id="new-game-btn">New game</button>
+  </div>
+  <div id="board">
+    <div id="enemy-row">
+      <div id="enemy-leader" class="leader-slot"></div>
+      <div id="enemy-base" class="base-slot"></div>
+      <div class="counts">Hand: <span id="enemy-hand-count"></span> · Res: <span id="enemy-res"></span></div>
+    </div>
+    <div id="arena-space" class="arena"><div class="arena-label">Space</div></div>
+    <div id="arena-ground" class="arena"><div class="arena-label">Ground</div></div>
+    <div id="my-row">
+      <div id="my-leader" class="leader-slot"></div>
+      <div id="my-base" class="base-slot"></div>
+      <div class="counts">Deck: <span id="my-deck-count"></span> · Res: <span id="my-res"></span></div>
+    </div>
+    <div id="choice-bar"></div>
+    <div id="mulligan-bar" style="display:none">
+      <button id="keep-btn">Keep hand</button>
+      <button id="mull-btn">Mulligan</button>
+    </div>
+    <div id="hand-bar">
+      <div id="hand"></div>
+      <button id="decline-btn" style="display:none">Done</button>
+    </div>
+  </div>
+  <div id="log"></div>
+</div>
+<!-- Load order matters (dependency order); mirror of tests.html plus UI files.
+     A new data/engine file must be added to BOTH index.html and tests.html. -->
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="names.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/state.js"></script>
+<script src="js/effects.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/text.js"></script>
+<script src="js/validate.js"></script>
+<script src="data/cards-sor.js"></script>
+<script src="data/cards-shd.js"></script>
+<script src="data/cards-twi.js"></script>
+<script src="data/cards-jtl.js"></script>
+<script src="data/cards-lof.js"></script>
+<script src="data/cards-sec.js"></script>
+<script src="data/cards-law.js"></script>
+<script src="data/cards-ash.js"></script>
+<script src="data/decks.js"></script>
+<script src="data/names-placeholder.js"></script>
+<script src="js/logtext.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/ui.js"></script>
+<script>
+(function () {
+  SB.validateContent();
+  const sel = document.getElementById('deck-select');
+  Object.keys(SB.decks).filter(function (d) { return d.indexOf('fixture') < 0; }).forEach(function (d) {
+    const o = document.createElement('option');
+    o.value = d; o.textContent = SB.names.decks[d] || d;
+    sel.appendChild(o);
+  });
+  function newGame() {
+    const deck = sel.value;
+    const others = Object.keys(SB.decks).filter(function (d) { return d !== deck && d.indexOf('fixture') < 0; });
+    const aiDeck = others[Math.floor(Math.random() * others.length)];
+    SB.ui.start({ deck0: deck, deck1: aiDeck,
+      difficulty: document.getElementById('difficulty-select').value });
+  }
+  document.getElementById('new-game-btn').onclick = newGame;
+  document.getElementById('undo-btn').onclick = function () { SB.ui.undo(); };
+  newGame();
+})();
+</script>
+</body>
+</html>
