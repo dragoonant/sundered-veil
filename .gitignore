@@ -13,3 +13,8 @@ import-packets/
 # OS noise
 Thumbs.db
 desktop.ini
+
+# Generated assets stay out of the repo (regenerate via tools/gen-art.mjs, tools/gen-sfx.mjs)
+art/
+sfx/
+art-gen.log
