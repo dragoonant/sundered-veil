@@ -32,9 +32,28 @@
     return grants;
   };
 
+  function dynamicPowerValue(state, unit, kind) {
+    if (kind === 'friendlyPilotsAndPilotUpgrades') {
+      let n = 0;
+      SB.allUnits(state, unit.owner).forEach(function (u) {
+        if (u.uid !== unit.uid && SB.unitTraits(state, u).indexOf('tr30') >= 0) n++;
+        u.upgrades.forEach(function (inst) {
+          const c = SB.card(inst.cardId);
+          if (c.type === 'leader' || (c.traits || []).indexOf('tr30') >= 0) n++;
+        });
+      });
+      return n;
+    }
+    if (kind === 'pilotsOnSelf') return SB.pilotCount(state, unit);
+    return 0;
+  }
+
   SB.unitPower = function (state, unit) {
     let p = basePower(state, unit);
-    SB.auraGrants(state, unit).forEach(function (g) { p += (g.power || 0); });
+    SB.auraGrants(state, unit).forEach(function (g) {
+      p += (g.power || 0);
+      if (g.dynamicPower) p += dynamicPowerValue(state, unit, g.dynamicPower);
+    });
     return Math.max(0, p);
   };
   SB.unitMaxHp = function (state, unit) {
@@ -103,9 +122,21 @@
     if (item.op.bonusIfTrait && SB.unitTraits(state, u).indexOf(item.op.bonusIfTrait.trait) >= 0) {
       bonus += item.op.bonusIfTrait.amount;
     }
+    if (item.op.bonusIfOddCostsDiffer) {
+      const rc = SB.efx(state, item.ctx).revealedCost;
+      const uc = SB.card(u.cardId).cost;
+      if (rc != null && uc != null && rc % 2 === 1 && uc % 2 === 1 && rc !== uc) {
+        bonus += item.op.bonusIfOddCostsDiffer;
+      }
+    }
+    if (item.op.grantSaboteurForAttack) {
+      u.tempKeywords = u.tempKeywords || [];
+      u.tempKeywords.push('saboteur');
+    }
     state.queue.unshift({ step: 'attackTargetChoice', player: item.controller, uid: u.uid,
       bonusPower: bonus, firstStrike: !!item.op.firstStrike, ready: !!item.op.ready,
-      optional: !!item.op.optionalAttack, bonusVsUnitsOnly: !!item.op.bonusVsUnitsOnly });
+      optional: !!item.op.optionalAttack, bonusVsUnitsOnly: !!item.op.bonusVsUnitsOnly,
+      unitsOnly: !!item.op.unitsOnly });
   };
 
   // Look at the top card of your deck and decide. modes ⊆ ['leave','bottom','discard','play'].
@@ -125,13 +156,16 @@
   O.mill = function (state, item) {
     const p = state.players[item.controller];
     const types = [];
+    const costs = [];
     for (let i = 0; i < (item.op.amount || 1) && p.deck.length > 0; i++) {
       const inst = p.deck.shift();
       p.discard.push(inst);
       types.push(SB.card(inst.cardId).type);
+      costs.push(SB.card(inst.cardId).cost);
       state.log.push({ type: 'milled', player: item.controller, cardId: inst.cardId });
     }
     SB.efx(state, item.ctx).milledTypes = types;
+    SB.efx(state, item.ctx).milledCosts = costs;
   };
 
   // A named player picks one of two effect lists. {chooser:'opponent'|'self', a:{effects}, b:{effects}}
@@ -164,7 +198,7 @@
   O.discard = function (state, item) {
     const who = item.op.who === 'self' ? item.controller : SB.other(item.controller);
     for (let i = 0; i < (item.op.amount || 1); i++) {
-      state.queue.unshift({ step: 'discardChoice', player: who });
+      state.queue.unshift({ step: 'discardChoice', player: who, ctx: item.ctx });
     }
   };
 
@@ -224,9 +258,22 @@
   // units and/or base. AI/queue: we model as that player choosing targets one point
   // at a time (digital-friendly, rules-equivalent distribution).
   O.indirectDamage = function (state, item) {
-    const who = item.op.who === 'self' ? item.controller : SB.other(item.controller);
-    for (let i = 0; i < item.op.amount; i++) {
-      state.queue.unshift({ step: 'indirectPoint', player: who });
+    let who = item.op.who === 'self' ? item.controller : SB.other(item.controller);
+    if (item.op.who === 'defending') {
+      const t = item.ctx && item.ctx.attackTarget;
+      if (!t) return;
+      who = t.kind === 'base' ? t.player : (SB.findUnit(state, t.uid) || {}).owner;
+      if (who == null) return;
+    }
+    let amount = SB.resolveAmount(state, item, null) || item.op.amount;
+    if (who !== item.controller) {
+      // "Indirect damage you deal to opponents is increased by 1" statics.
+      SB.allUnits(state, item.controller).forEach(function (u) {
+        if ((SB.unitDef(u).staticFlags || []).indexOf('indirectBoost') >= 0) amount += 1;
+      });
+    }
+    for (let i = 0; i < amount; i++) {
+      state.queue.unshift({ step: 'indirectPoint', player: who, dealer: item.controller });
     }
   };
 
@@ -242,7 +289,7 @@
 
   O.readyResource = function (state, item) {
     const res = state.players[item.controller].resources;
-    let left = item.op.amount || 1;
+    let left = item.op.amountRef ? SB.resolveAmount(state, item, null) : (item.op.amount || 1);
     for (let i = 0; i < res.length && left > 0; i++) {
       if (res[i].exhausted) { res[i].exhausted = false; left--; }
     }
@@ -268,6 +315,88 @@
     state.log.push({ type: 'resourced', player: item.controller });
   };
 
+  // Defeat a non-unique upgrade on the (indirectly damaged) unit.
+  O.defeatUpgradeOn = function (state, item) {
+    const uid = item.ctx && item.ctx.damagedUid;
+    const u = uid != null ? SB.findUnit(state, uid) : null;
+    if (!u) return;
+    const idx = u.upgrades.findIndex(function (inst) { return !SB.card(inst.cardId).unique && !inst.leaderPilot; });
+    if (idx < 0) return;
+    const inst = u.upgrades.splice(idx, 1)[0];
+    if (!SB.card(inst.cardId).token) state.players[u.owner].discard.push(inst);
+    state.log.push({ type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
+    if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
+  };
+
+  // Mill both decks and count odd costs among the milled cards.
+  O.millBothCountOdd = function (state, item) {
+    let odd = 0;
+    [item.controller, SB.other(item.controller)].forEach(function (pi) {
+      const p = state.players[pi];
+      for (let i = 0; i < (item.op.amount || 3) && p.deck.length > 0; i++) {
+        const inst = p.deck.shift();
+        p.discard.push(inst);
+        const c = SB.card(inst.cardId).cost;
+        if (c != null && c % 2 === 1) odd++;
+        state.log.push({ type: 'milled', player: pi, cardId: inst.cardId });
+      }
+    });
+    SB.efx(state, item.ctx)[item.op.saveAs || 'odds'] = odd;
+  };
+
+  // Ready every unit matched by scope.
+  O.readyAll = function (state, item) {
+    const cands = SB.selectorCandidates(state, item.controller, item.op.scope, item.ctx || {});
+    cands.forEach(function (c) {
+      const u = SB.findUnit(state, c.uid);
+      if (u && u.exhausted && !u.stunned) { u.exhausted = false; state.log.push({ type: 'readied', uid: u.uid }); }
+    });
+  };
+
+  // Spend resources as an effect cost (assumes affordability was checked upstream;
+  // fizzles otherwise).
+  O.spendResources = function (state, item) {
+    const res = state.players[item.controller].resources;
+    const ready = res.filter(function (x) { return !x.exhausted; }).length;
+    if (ready < item.op.amount) { state.log.push({ type: 'fizzle', why: 'cantPay', fizzled: true }); return; }
+    let left = item.op.amount;
+    for (let i = 0; i < res.length && left > 0; i++) {
+      if (!res[i].exhausted) { res[i].exhausted = true; left--; }
+    }
+    state.log.push({ type: 'resourcesSpent', player: item.controller, amount: item.op.amount });
+  };
+
+  // Move this unit to the other arena.
+  O.moveSelfArena = function (state, item) {
+    const u = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
+    if (!u) return;
+    const from = SB.arenaOf(state, u);
+    const to = item.op.to || (from === 'ground' ? 'space' : 'ground');
+    if (from === to) return;
+    state[from].splice(state[from].indexOf(u), 1);
+    state[to].push(u);
+    state.log.push({ type: 'movedArena', uid: u.uid, to: to });
+  };
+
+  // Take control of an enemy unit (optionally returned to owner at next regroup).
+  O.takeControl = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (!u) return;
+    const original = u.owner;
+    u.owner = item.controller;
+    if (item.op.ready && u.exhausted && !u.stunned) u.exhausted = false;
+    if (item.op.returnAtRegroup) u.commandeered = { originalOwner: original };
+    state.log.push({ type: 'controlTaken', uid: u.uid, by: item.controller, sound: 'claim', notice: true });
+  };
+
+  // Reveal the top card of the deck (public information effect).
+  O.revealTop = function (state, item) {
+    const p = state.players[item.controller];
+    if (p.deck.length === 0) return;
+    SB.efx(state, item.ctx).revealedCost = SB.card(p.deck[0].cardId).cost;
+    state.log.push({ type: 'revealedTop', player: item.controller, cardId: p.deck[0].cardId, notice: true });
+  };
+
   // ---- queue steps handled by the engine loop (registered here) -----------
   SB.queueSteps = SB.queueSteps || {};
 
@@ -283,6 +412,7 @@
       const p = state.players[itemStep.player];
       const inst = p.hand.splice(action.handIndex, 1)[0];
       p.discard.push(inst);
+      if (itemStep.ctx) SB.efx(state, itemStep.ctx).lastDiscardedType = SB.card(inst.cardId).type;
       state.log.push({ type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
     },
   };
@@ -300,7 +430,14 @@
       if (action.target.kind === 'base') SB.damageBase(state, action.target.player, 1, 'indirect');
       else {
         const u = SB.findUnit(state, action.target.uid);
-        if (u) SB.damageUnit(state, u, 1, {});
+        if (u) {
+          SB.damageUnit(state, u, 1, {});
+          if (itemStep.dealer != null && SB.findUnit(state, u.uid)) {
+            SB.allUnits(state, itemStep.dealer).forEach(function (obs) {
+              SB.fireTriggers(state, 'onIndirectUnitDamage', obs, { sourceUid: obs.uid, damagedUid: u.uid });
+            });
+          }
+        }
       }
     },
   };
@@ -672,7 +809,10 @@
       const u = SB.findUnit(state, itemStep.uid);
       if (!u) return null;
       if (u.exhausted && !itemStep.ready) return null;
-      const acts = SB.attackTargets(state, u).map(function (t) {
+      let pool = SB.attackTargets(state, u);
+      if (itemStep.unitsOnly) pool = pool.filter(function (t) { return t.kind === 'unit'; });
+      if (pool.length === 0) return null;
+      const acts = pool.map(function (t) {
         return { type: 'effectAttack', player: itemStep.player, target: t };
       });
       if (itemStep.optional && acts.length) acts.push({ type: 'effectAttack', player: itemStep.player, target: null });

@@ -49,10 +49,16 @@
     }, 0);
   };
 
+  // An upgrade's stat contribution: leader-pilot upgrades use their deployedSide.
+  function upgradeStats(card) {
+    if (card.type === 'leader') return { power: card.deployedSide.power, hp: card.deployedSide.hp };
+    return { power: card.power || 0, hp: card.hp || 0 };
+  }
+
   SB.unitPower = function (state, unit) {
     const def = SB.unitDef(unit);
     let p = def.power + unit.temp.power + unit.experience;
-    upgradeDefs(unit).forEach(function (u) { p += (u.power || 0); });
+    upgradeDefs(unit).forEach(function (u) { p += upgradeStats(u).power; });
     if (SB.hasKeyword(state, unit, 'grit')) p += unit.damage;
     return Math.max(0, p);
   };
@@ -60,8 +66,22 @@
   SB.unitMaxHp = function (state, unit) {
     const def = SB.unitDef(unit);
     let h = def.hp + unit.temp.hp + unit.experience;
-    upgradeDefs(unit).forEach(function (u) { h += (u.hp || 0); });
+    upgradeDefs(unit).forEach(function (u) { h += upgradeStats(u).hp; });
     return h;
+  };
+
+  // Pilot capacity: normally 1 pilot; the extraPilotSlot static allows 2.
+  SB.pilotCount = function (state, unit) {
+    return unit.upgrades.filter(function (inst) {
+      const c = SB.card(inst.cardId);
+      return c.type === 'leader' || (c.traits || []).indexOf('tr30') >= 0 ||
+        (c.grantTraits || []).indexOf('tr30') >= 0;
+    }).length;
+  };
+  // "Has a pilot" for attach-gating: true when at capacity.
+  SB.hasPilot = function (state, unit) {
+    const cap = (SB.unitDef(unit).staticFlags || []).indexOf('extraPilotSlot') >= 0 ? 2 : 1;
+    return SB.pilotCount(state, unit) >= cap;
   };
 
   SB.unitRemainingHp = function (state, unit) {

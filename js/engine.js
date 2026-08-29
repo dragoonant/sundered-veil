@@ -77,6 +77,19 @@
         if (baseCost <= SB.readyResources(state, me)) {
           acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId });
         }
+        // Piloting: a unit with the piloting keyword may instead be played as an
+        // upgrade on a friendly Vehicle without a Pilot, for its piloting cost.
+        const pilotKw = (card.keywords || []).find(function (k) { return k.k === 'piloting'; });
+        if (pilotKw) {
+          const pCost = SB.smuggleCost(state, me, card, pilotKw); // same cost+aspects shape
+          if (pCost <= SB.readyResources(state, me)) {
+            SB.allUnits(state, me).forEach(function (u) {
+              if (SB.unitTraits(state, u).indexOf('tr46') < 0) return;
+              if (SB.hasPilot(state, u)) return;
+              acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId, asPilot: true, attachTo: u.uid });
+            });
+          }
+        }
         // Exploit: also offer paying by defeating 1..N friendly units (2 less each).
         const ex = (card.keywords || []).find(function (k) { return k.k === 'exploit'; });
         if (ex) {
@@ -136,6 +149,13 @@
     if (!p.leader.deployed) {
       if (p.resources.length >= leaderCard.deployCost) {
         acts.push({ type: 'deployLeader', player: me });
+        if (leaderCard.pilotSide) {
+          SB.allUnits(state, me).forEach(function (u) {
+            if (SB.unitTraits(state, u).indexOf('tr46') < 0) return; // Vehicle only
+            if (SB.hasPilot(state, u)) return;
+            acts.push({ type: 'deployLeaderPilot', player: me, attachTo: u.uid });
+          });
+        }
       }
       (leaderCard.leaderSide.abilities || []).forEach(function (ab, ai) {
         if (ab.trigger !== 'action') return;
@@ -324,6 +344,20 @@
         const ab = (card.abilities || []).find(function (a) { return a.trigger === 'onPlay'; });
         if (ab) SB.queueEffects(state, me, ab.effects, { cardId: inst.cardId, eventUid: inst.uid });
       }
+    } else if (action.type === 'deployLeaderPilot') {
+      const lc = SB.card(p.leader.cardId);
+      expect(!p.leader.deployed && p.resources.length >= lc.deployCost && lc.pilotSide, action);
+      const bearer = SB.findUnit(state, action.attachTo);
+      expect(bearer && bearer.owner === me && !SB.hasPilot(state, bearer), action);
+      p.leader.deployed = 'pilot';
+      const inst = { uid: state.nextUid++, cardId: p.leader.cardId, leaderPilot: true };
+      p.leader.uid = inst.uid;
+      bearer.upgrades.push(inst);
+      state.log.push({ type: 'deployLeaderPilot', player: me, cardId: p.leader.cardId, uid: bearer.uid, sound: 'deploy' });
+      (lc.pilotSide.abilities || []).forEach(function (ab) {
+        if (ab.trigger !== 'onDeployPilot') return;
+        SB.queueEffects(state, me, ab.effects, { sourceUid: bearer.uid, cardId: p.leader.cardId, condition: ab.condition });
+      });
     } else if (action.type === 'deployLeader') {
       const leaderCard = SB.card(p.leader.cardId);
       expect(!p.leader.deployed && p.resources.length >= leaderCard.deployCost, action);
@@ -377,6 +411,10 @@
     expect(inst && inst.cardId === action.cardId, action);
     const card = SB.card(inst.cardId);
     let cost = Math.max(0, SB.cardCost(state, me, inst.cardId) - (mods.discount || 0));
+    if (action.asPilot) {
+      const pk = (card.keywords || []).find(function (k) { return k.k === 'piloting'; });
+      cost = SB.smuggleCost(state, me, card, pk);
+    }
     if (action.exploit) cost = Math.max(0, cost - 2 * action.exploit);
     if (action.attachTo && card.costModAttach) {
       const tgt = SB.findUnit(state, action.attachTo);
@@ -403,9 +441,20 @@
     p.playedThisPhase.push(inst.cardId);
     state.log.push({ type: 'playCard', player: me, cardId: inst.cardId, cost: cost, sound: 'play' });
 
-    if (card.type === 'unit') {
+    if (action.asPilot) {
+      const bearer = SB.findUnit(state, action.attachTo);
+      expect(bearer, action);
+      bearer.upgrades.push(inst);
+      state.log.push({ type: 'attached', uid: bearer.uid, cardId: inst.cardId, sound: 'attach' });
+      (card.abilities || []).forEach(function (ab) {
+        if (ab.trigger !== 'onPlayAsPilot') return;
+        SB.queueEffects(state, me, ab.effects, { sourceUid: bearer.uid, cardId: inst.cardId, condition: ab.condition });
+      });
+    } else if (card.type === 'unit') {
       const unit = SB.makeUnit(state, inst.cardId, me);
       unit.uid = inst.uid; // keep instance identity
+      if (SB.card(inst.cardId).staticFlags &&
+          SB.card(inst.cardId).staticFlags.indexOf('defeatAtRegroup') >= 0) unit.defeatAtRegroup = true;
       if (mods.entersReady) unit.exhausted = false;
       if (mods.defeatAtRegroup) unit.defeatAtRegroup = true;
       state[card.arena].push(unit);
@@ -490,7 +539,7 @@
   // grant = {power?, powerPerSelfDamage?, keywords?:[{k}]} — condition kinds:
   // 'defenderDamaged'. Keep SB.cardText's combat describers in step with this.
   function combatMods(state, attacker, defender) {
-    const mods = { power: 0, overwhelm: false };
+    const mods = { power: 0, overwhelm: false, firstStrike: false };
     // combatAura: another unit's grant applying to attackers matching its scope
     // (only while attacking an enemy unit).
     if (defender) {
@@ -508,9 +557,12 @@
     (SB.unitDef(attacker).abilities || []).forEach(function (ab) {
       if (ab.trigger !== 'combatConstant') return;
       if (ab.condition && ab.condition.if === 'defenderDamaged' && (!defender || defender.damage === 0)) return;
+      if (ab.condition && ab.condition.if === 'defenderExhaustedOld' &&
+          (!defender || !defender.exhausted || defender.enteredRound === state.round)) return;
       const g = ab.grant || {};
       mods.power += g.power || 0;
       if (g.powerPerSelfDamage) mods.power += g.powerPerSelfDamage * attacker.damage;
+      if (g.firstStrike) mods.firstStrike = true;
       (g.keywords || []).forEach(function (kw) { if (kw.k === 'overwhelm') mods.overwhelm = true; });
     });
     return mods;
@@ -545,7 +597,7 @@
       defender.shields = 0;
       state.log.push({ type: 'shieldsSabotaged', uid: defender.uid, sound: 'shield' });
     }
-    const alwaysFirst = (SB.unitDef(attacker).staticFlags || []).indexOf('firstStrike') >= 0;
+    const alwaysFirst = (SB.unitDef(attacker).staticFlags || []).indexOf('firstStrike') >= 0 || mods.firstStrike;
     if (item.firstStrike || alwaysFirst) {
       // Attacker deals combat damage first; defender only retaliates if it lives.
       SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
@@ -605,6 +657,7 @@
 
   // Undeployed-leader triggered abilities (e.g. "When you play an upgrade").
   // exhaustCost:true abilities are offered as optional (pay by exhausting leader).
+  SB.fireLeaderTrigger = fireLeaderTrigger;
   function fireLeaderTrigger(state, playerIdx, trigger, ctx) {
     const p = state.players[playerIdx];
     if (p.leader.deployed) return;
@@ -763,6 +816,20 @@
     // "At the start of the regroup phase, defeat it" markers (temporary summons).
     SB.allUnits(state).filter(function (u) { return u.defeatAtRegroup; }).forEach(function (u) {
       SB.defeatUnit(state, u, {});
+    });
+    // Commandeered units go back to their owner's hand.
+    SB.allUnits(state).filter(function (u) { return u.commandeered; }).forEach(function (u) {
+      const arena = SB.arenaOf(state, u);
+      state[arena].splice(state[arena].indexOf(u), 1);
+      const original = u.commandeered.originalOwner;
+      state.players[original].hand.push({ uid: u.uid, cardId: u.cardId });
+      u.upgrades.forEach(function (inst) {
+        if (inst.leaderPilot) {
+          const lp = state.players[u.owner].leader;
+          lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+        } else if (!SB.card(inst.cardId).token) state.players[original].discard.push(inst);
+      });
+      state.log.push({ type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
     });
     if (state.winner != null) return;
     SB.drawCards(state, 0, 2);

@@ -36,6 +36,12 @@
           if (!okT && !okC) return;
         }
         if (sel.tokenOnly && !SB.card(u.cardId).token) return;
+        if (sel.noPilot && SB.pilotCount(state, u) > 0) return;
+        if (sel.anyTrait && !sel.anyTrait.some(function (tr) { return SB.unitTraits(state, u).indexOf(tr) >= 0; })) return;
+        if (sel.pilotish) {
+          const isPilot = SB.unitTraits(state, u).indexOf('tr30') >= 0;
+          if (!isPilot && SB.pilotCount(state, u) === 0) return;
+        }
         if (sel.maxCost != null && SB.card(u.cardId).cost > sel.maxCost) return;
         if (sel.minCost != null && SB.card(u.cardId).cost < sel.minCost) return;
         if (sel.minPower != null && SB.unitPower(state, u) < sel.minPower) return;
@@ -128,15 +134,27 @@
     } else if (!card.token) {
       owner.discard.push({ uid: unit.uid, cardId: unit.cardId });
     }
-    // Upgrades go to their owner's discard (tokens vanish).
+    // Upgrades go to their owner's discard (tokens vanish; leader pilots flip back).
     unit.upgrades.forEach(function (inst) {
-      if (!SB.card(inst.cardId).token) owner.discard.push(inst);
+      if (inst.leaderPilot) {
+        const lp = state.players[unit.owner].leader;
+        lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+        state.log.push({ type: 'leaderReturned', player: unit.owner });
+      } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
     });
     SB.fireTriggers(state, 'whenDefeated', unit, ctx);
   };
 
   SB.drawCards = function (state, playerIdx, n) {
     const p = state.players[playerIdx];
+    // "When an opponent draws during the action phase" observers.
+    if (state.phase === 'action' && n > 0 && !state._drawObserverGuard) {
+      state._drawObserverGuard = true;
+      SB.allUnits(state, SB.other(playerIdx)).forEach(function (u) {
+        SB.fireTriggers(state, 'onOpponentDraw', u, { sourceUid: u.uid });
+      });
+      delete state._drawObserverGuard;
+    }
     for (let i = 0; i < n; i++) {
       if (p.deck.length === 0) {
         // Decked: 3 damage to your base per card you fail to draw.
@@ -202,6 +220,24 @@
       const arena = SB.arenaOf(state, u);
       return state[arena].filter(function (x) { return x.owner === item.controller; }).length;
     }
+    if (op.amountRef === 'oddFriendlyCount') {
+      let n = 0;
+      SB.allUnits(state, item.controller).forEach(function (u) {
+        const c = SB.card(u.cardId).cost;
+        if (c != null && c % 2 === 1) n++;
+        u.upgrades.forEach(function (inst) {
+          const uc = SB.card(inst.cardId).cost;
+          if (uc != null && uc % 2 === 1) n++;
+        });
+      });
+      return n;
+    }
+    if (op.amountRef === 'targetRemHpMinus1') {
+      const u = target && target.kind === 'unit' ? SB.findUnit(state, target.uid) : null;
+      return u ? Math.max(0, SB.unitRemainingHp(state, u) - 1) : 0;
+    }
+    const st = op.amountRef.match(/^stored:(.+)$/);
+    if (st) return SB.efx(state, item.ctx)[st[1]] || 0;
     if (op.amountRef === 'distinctDiscardCosts') {
       const costs = new Set();
       state.players[item.controller].discard.forEach(function (inst) {
@@ -220,9 +256,16 @@
   };
 
   // Central op execution: saved-target reuse + save-after + handler dispatch.
+  const DAMAGE_OPS = ['damage', 'damageAll', 'dividedDamage', 'damageOwnBase', 'damagePerExploited'];
   SB.execOp = function (state, item, target) {
     if (item.op.saveTargetAs && target) SB.efx(state, item.ctx)[item.op.saveTargetAs] = target;
     SB.ops[item.op.op](state, item, target);
+    // "When you deal non-combat damage" leader observers (fires once per damage op).
+    if (DAMAGE_OPS.indexOf(item.op.op) >= 0 && SB.fireLeaderTrigger && !state._ncdGuard) {
+      state._ncdGuard = true;
+      SB.fireLeaderTrigger(state, item.controller, 'onNonCombatDamage', {});
+      delete state._ncdGuard;
+    }
   };
 
   // --- conditions ----------------------------------------------------------
@@ -263,9 +306,11 @@
         return !!bearer && cond.cards.indexOf(bearer.cardId) >= 0;
       }
       case 'controlCard':
-        // Leader (either side) or unit with one of these card ids.
+        // Leader (either side), unit, or attached upgrade with one of these ids.
         return cond.cards.some(function (cid) {
-          if (SB.allUnits(state, controller).some(function (u) { return u.cardId === cid; })) return true;
+          if (SB.allUnits(state, controller).some(function (u) {
+            return u.cardId === cid || u.upgrades.some(function (inst) { return inst.cardId === cid; });
+          })) return true;
           return state.players[controller].leader.cardId === cid;
         });
       case 'milledNonUnit': {
@@ -277,6 +322,21 @@
         const has = SB.efx(state, ctx)[cond.name] != null;
         return cond.not ? !has : has;
       }
+      case 'controlOtherSpaceUnit':
+        return state.space.filter(function (u) { return u.owner === controller && u.uid !== ctx.sourceUid; }).length > 0;
+      case 'discardedUnit':
+        return SB.efx(state, ctx).lastDiscardedType === 'unit';
+      case 'enemyUnitDamaged':
+        return SB.allUnits(state, SB.other(controller)).some(function (u) { return u.damage > 0; });
+      case 'opponentMoreSpaceUnits': {
+        const mine = state.space.filter(function (u) { return u.owner === controller; }).length;
+        const theirs = state.space.filter(function (u) { return u.owner !== controller; }).length;
+        return theirs > mine;
+      }
+      case 'milledOddCost': {
+        const st = SB.efx(state, ctx);
+        return (st.milledCosts || []).some(function (c) { return c != null && c % 2 === 1; });
+      }
       case 'coordinate':
         return SB.allUnits(state, controller).length >= 3;
       case 'baseDamageAtLeast':
@@ -285,7 +345,8 @@
         return SB.allUnits(state, controller).some(function (u) { return SB.card(u.cardId).token; });
       case 'controlUnitWithAspect':
         return SB.allUnits(state, controller).some(function (u) {
-          return (SB.card(u.cardId).aspects || []).indexOf(cond.aspect) >= 0 && u.uid !== ctx.sourceUid;
+          if (!cond.includeSelf && u.uid === ctx.sourceUid) return false;
+          return (SB.card(u.cardId).aspects || []).indexOf(cond.aspect) >= 0;
         });
       case 'bountyUnitUnique':
         return !!(ctx.bountyCardId && SB.card(ctx.bountyCardId).unique);
@@ -344,7 +405,10 @@
         if (u) {
           healed = Math.min(amt, u.damage);
           u.damage -= healed;
-          if (healed > 0) state.log.push({ type: 'unitHeal', uid: u.uid, amount: healed, sound: 'heal' });
+          if (healed > 0) {
+            state.log.push({ type: 'unitHeal', uid: u.uid, amount: healed, sound: 'heal' });
+            SB.fireTriggers(state, 'whenHealed', u, { sourceUid: u.uid });
+          }
         }
       }
       SB.efx(state, item.ctx).lastHealed = healed;
@@ -397,7 +461,13 @@
     },
     defeat: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
-      if (u) SB.defeatUnit(state, u, item.ctx);
+      if (!u) return;
+      if (u.owner !== item.controller &&
+          (SB.unitDef(u).staticFlags || []).indexOf('noEnemyDefeatReturn') >= 0) {
+        state.log.push({ type: 'fizzle', why: 'immune', fizzled: true });
+        return;
+      }
+      SB.defeatUnit(state, u, item.ctx);
     },
     exhaust: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
@@ -410,6 +480,11 @@
     returnHand: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
       if (!u) return;
+      if (u.owner !== item.controller &&
+          (SB.unitDef(u).staticFlags || []).indexOf('noEnemyDefeatReturn') >= 0) {
+        state.log.push({ type: 'fizzle', why: 'immune', fizzled: true });
+        return;
+      }
       const arena = SB.arenaOf(state, u);
       state[arena].splice(state[arena].indexOf(u), 1);
       const card = SB.card(u.cardId);
@@ -421,7 +496,10 @@
         owner.hand.push({ uid: u.uid, cardId: u.cardId });
       }
       u.upgrades.forEach(function (inst) {
-        if (!SB.card(inst.cardId).token) owner.discard.push(inst);
+        if (inst.leaderPilot) {
+          const lp = state.players[u.owner].leader;
+          lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+        } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
       });
       state.log.push({ type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
     },

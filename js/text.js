@@ -26,6 +26,9 @@
     if (sel.maxCostRefPlayed) s += ' that costs no more than the played card';
     if (sel.tokenOnly) s = s.replace(/unit$/, 'token unit');
     if (sel.traitOrCards) s += ' (of the matching kind or the named champion)';
+    if (sel.pilotish) s += ' that is a pilot or carries one';
+    if (sel.noPilot) s += ' without a pilot';
+    if (sel.anyTrait) s += ' of an eligible kind';
     if (sel.maxRemHp != null) s += ' with ' + sel.maxRemHp + ' or less remaining HP';
     if (sel.powerLessThanSource) s += ' with less power than this unit';
     if (sel.exhaustedOnly) s += ' that is exhausted';
@@ -49,6 +52,9 @@
     if (op.amountRef === 'friendlyInTargetArena') return 'as much as the number of friendly units in its arena';
     if (/^powerOf:/.test(op.amountRef)) return 'as much as the chosen unit’s power';
     if (op.amountRef === 'distinctDiscardCosts') return '1 for each different cost among cards in your discard pile';
+    if (op.amountRef === 'oddFriendlyCount') return '1 for each friendly unit or upgrade with an odd cost';
+    if (op.amountRef === 'targetRemHpMinus1') return '1 less than its remaining HP in';
+    if (/^stored:/.test(op.amountRef)) return 'that much';
     return String(op.amount);
   }
 
@@ -93,14 +99,15 @@
     healBase: function (op) { return 'heal ' + op.amount + ' damage from your base'; },
     damageOwnBase: function (op) { return 'deal ' + op.amount + ' damage to your base'; },
     indirectDamage: function (op) {
-      const who = op.who === 'self' ? 'you distribute' : 'your opponent distributes';
-      return who + ' ' + op.amount + ' indirect damage among their units and base';
+      const who = op.who === 'self' ? 'you distribute' :
+        op.who === 'defending' ? 'the defending player distributes' : 'your opponent distributes';
+      return who + ' ' + amountText(op) + ' indirect damage among their units and base';
     },
     searchDeck: function (op) {
       let s = 'search ' + (op.depth ? 'the top ' + op.depth + ' cards of ' : '') + 'your deck for ' + filterNoun(op.filter) + ', reveal it, and draw it';
       return s + ', then shuffle your deck';
     },
-    readyResource: function (op) { return 'ready ' + (op.amount || 1) + ' of your resources'; },
+    readyResource: function (op) { return 'ready ' + (op.amountRef ? amountText(op) : (op.amount || 1)) + ' of your resources'; },
     exhaustResource: function (op) {
       const who = op.who === 'self' ? 'your' : 'your opponent’s';
       return 'exhaust ' + (op.amount || 1) + ' of ' + who + ' resources';
@@ -116,6 +123,11 @@
       const perks = [];
       if (op.bonusPower) perks.push('it gets +' + op.bonusPower + '/+0 for this attack');
       if (op.firstStrike) perks.push('it deals its combat damage first');
+      if (op.ready) perks.push('it may attack even while exhausted');
+      if (op.unitsOnly) perks.push('it cannot attack a base this way');
+      if (op.bonusIfOddCostsDiffer) perks.push('if the revealed card and that unit have different odd costs, it gets +' + op.bonusIfOddCostsDiffer + '/+0');
+      if (op.bonusIfTrait) perks.push('a ' + (SB.names.traits[op.bonusIfTrait.trait] || op.bonusIfTrait.trait) + ' unit gets +' + op.bonusIfTrait.amount + '/+0 for this attack');
+      if (op.grantSaboteurForAttack) perks.push('it gains Saboteur for this round');
       if (perks.length) s += ' — ' + perks.join(' and ');
       return s;
     },
@@ -182,6 +194,18 @@
       return 'exhaust any number of eligible friendly units — deal 1 damage to the defending base for each';
     },
     bottomFromHand: function (op) { return 'put ' + op.amount + ' cards from your hand on the bottom of your deck'; },
+    defeatUpgradeOn: function () { return 'you may defeat a basic upgrade on that unit'; },
+    millBothCountOdd: function (op) { return 'discard ' + (op.amount || 3) + ' cards from each deck, counting odd costs'; },
+    readyAll: function (op) { return 'ready each ' + scopeNoun(op.scope); },
+    spendResources: function (op) { return 'pay ' + op.amount + ' resources'; },
+    moveSelfArena: function (op) { return 'move this unit to the ' + (op.to || 'other') + ' arena'; },
+    takeControl: function (op) {
+      let s = 'take control of ' + describeTarget(op.target);
+      if (op.ready) s += ' and ready it';
+      if (op.returnAtRegroup) s += ' — return it to its owner at the start of the next regroup phase';
+      return s;
+    },
+    revealTop: function () { return 'reveal the top card of your deck'; },
     damagePerExploited: function () {
       return 'for each unit exploited while playing this card, you may deal damage equal to its power to an enemy unit';
     },
@@ -227,6 +251,12 @@
     onSmuggle: 'When played using its smuggle cost',
     onUpgradePlayed: 'When you play an upgrade',
     whenCombatDamaged: 'When combat damage is dealt to this unit (and it survives)',
+    onOpponentDraw: 'When an opponent draws during the action phase',
+    whenHealed: 'When damage is healed from this unit',
+    onIndirectUnitDamage: 'When your indirect damage hits a unit',
+    onDeployPilot: 'When deployed as a pilot',
+    onPlayAsPilot: 'When played as a pilot',
+    onNonCombatDamage: 'When you deal non-combat damage',
   };
 
   const conditionText = {
@@ -255,6 +285,12 @@
     coordinate: function () { return 'while you control 3 or more units'; },
     baseDamageAtLeast: function (c) { return 'while your base has ' + c.n + ' or more damage'; },
     controlsTokenUnit: function () { return 'if you control a token unit'; },
+    enemyUnitDamaged: function () { return 'while an enemy unit is damaged'; },
+    opponentMoreSpaceUnits: function () { return 'if the opponent controls more space units than you'; },
+    milledOddCost: function () { return 'if the discarded card has an odd cost'; },
+    controlOtherSpaceUnit: function () { return 'if you control another space unit'; },
+    discardedUnit: function () { return 'if the discarded card was a unit'; },
+    defenderExhaustedOld: function () { return 'while attacking an exhausted unit that did not enter play this round'; },
     controlMoreUnitsThanOpponent: function () { return 'if you control more units than the opponent'; },
   };
 
@@ -272,6 +308,7 @@
       const parts = [];
       if (g.power || g.hp) parts.push('gets +' + (g.power || 0) + '/+' + (g.hp || 0));
       if (g.powerPerSelfDamage) parts.push('gets +' + g.powerPerSelfDamage + '/+0 for each damage on it');
+      if (g.firstStrike) parts.push('deals its combat damage before the defender');
       (g.keywords || []).forEach(function (kw) {
         parts.push('gains ' + (SB.names.keywords[kw.k] || kw.k));
       });
@@ -284,6 +321,8 @@
       const g = ab.grant;
       const parts = [];
       if (g.power || g.hp) parts.push('gets +' + (g.power || 0) + '/+' + (g.hp || 0));
+      if (g.dynamicPower === 'friendlyPilotsAndPilotUpgrades') parts.push('gets +1/+0 for each other friendly pilot unit or pilot upgrade');
+      if (g.dynamicPower === 'pilotsOnSelf') parts.push('gets +1/+0 for each pilot on it');
       (g.keywords || []).forEach(function (kw) {
         parts.push('gains ' + (SB.names.keywords[kw.k] || kw.k) + (kw.n != null ? ' ' + kw.n : ''));
       });
@@ -344,8 +383,10 @@
     }
     if (card.type === 'leader') {
       block(card.leaderSide, 'Leader');
-      lines.push('Epic Action: deploy this leader when you control ' + card.deployCost + ' or more resources.');
+      lines.push('Epic Action: deploy this leader when you control ' + card.deployCost + ' or more resources' +
+        (card.pilotSide ? ', as a ground unit or as a pilot on a friendly vehicle without a pilot' : '') + '.');
       block(card.deployedSide, 'Unit');
+      if (card.pilotSide) block(card.pilotSide, 'Pilot');
     } else {
       block(card);
       if (card.type === 'upgrade') {
