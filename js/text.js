@@ -22,6 +22,10 @@
     if (sel.maxCost != null) s += ' that costs ' + sel.maxCost + ' or less';
     if (sel.minCost != null) s += ' that costs ' + sel.minCost + ' or more';
     if (sel.minPower != null) s += ' with power ' + sel.minPower + ' or more';
+    if (sel.maxPower != null) s += ' with power ' + sel.maxPower + ' or less';
+    if (sel.maxCostRefPlayed) s += ' that costs no more than the played card';
+    if (sel.tokenOnly) s = s.replace(/unit$/, 'token unit');
+    if (sel.traitOrCards) s += ' (of the matching kind or the named champion)';
     if (sel.maxRemHp != null) s += ' with ' + sel.maxRemHp + ' or less remaining HP';
     if (sel.powerLessThanSource) s += ' with less power than this unit';
     if (sel.exhaustedOnly) s += ' that is exhausted';
@@ -164,6 +168,23 @@
     moveUpgrade: function () { return 'move an upgrade to another eligible unit with the same controller'; },
     defeatUpgrade: function () { return 'defeat an upgrade'; },
     upgradeFromDiscard: function () { return 'you may return an upgrade from your discard pile to your hand'; },
+    bondBuff: function (op) {
+      return 'while this unit is in play, ' + targetText(op) + ' gets +' + (op.power || 0) + '/+' + (op.hp || 0);
+    },
+    grantDiscount: function (op) {
+      return 'each of the next ' + op.count + ' ' + filterNoun(op.filter).replace(/^a /, '') + 's you play this phase costs ' + op.amount + ' less';
+    },
+    takeFromDiscard: function (op) {
+      return 'you may return ' + filterNoun(op.filter) + (op.filter && op.filter.defeatedThisPhase ? ' defeated this phase' : '') + ' from your discard pile to your hand';
+    },
+    eachPlayerDefeatOwn: function () { return 'each player chooses and defeats a non-leader unit they control'; },
+    massExhaustForBaseDamage: function () {
+      return 'exhaust any number of eligible friendly units — deal 1 damage to the defending base for each';
+    },
+    bottomFromHand: function (op) { return 'put ' + op.amount + ' cards from your hand on the bottom of your deck'; },
+    damagePerExploited: function () {
+      return 'for each unit exploited while playing this card, you may deal damage equal to its power to an enemy unit';
+    },
   };
   // Late-bound alias so grantAbilityTemp can render nested abilities.
   function describeAbilityPublic(ab) { return describeAbility(ab); }
@@ -231,6 +252,9 @@
     controlUnitWithAspect: function (c) { return 'if you control another ' + (SB.names.aspects[c.aspect] || c.aspect) + ' unit'; },
     bountyUnitUnique: function () { return 'if the defeated unit was a champion'; },
     defenderHasBounty: function () { return 'if the defender carries a bounty'; },
+    coordinate: function () { return 'while you control 3 or more units'; },
+    baseDamageAtLeast: function (c) { return 'while your base has ' + c.n + ' or more damage'; },
+    controlsTokenUnit: function () { return 'if you control a token unit'; },
     controlMoreUnitsThanOpponent: function () { return 'if you control more units than the opponent'; },
   };
 

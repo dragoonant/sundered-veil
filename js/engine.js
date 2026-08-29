@@ -64,11 +64,29 @@
     // Play cards from hand.
     p.hand.forEach(function (inst, i) {
       const card = SB.card(inst.cardId);
-      const cost = SB.cardCost(state, me, inst.cardId);
+      let cost = SB.cardCost(state, me, inst.cardId);
+      const exKw = (card.keywords || []).find(function (k) { return k.k === 'exploit'; });
+      if (exKw) {
+        const maxK = Math.min(exKw.n, SB.allUnits(state, me).length);
+        cost = Math.max(0, cost - 2 * maxK); // affordable via max exploit
+      }
       if (cost > SB.readyResources(state, me)) return;
       if (card.type === 'unit') {
         if (card.unique && SB.allUnits(state, me).some(function (u) { return u.cardId === inst.cardId; })) return;
-        acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId });
+        const baseCost = SB.cardCost(state, me, inst.cardId);
+        if (baseCost <= SB.readyResources(state, me)) {
+          acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId });
+        }
+        // Exploit: also offer paying by defeating 1..N friendly units (2 less each).
+        const ex = (card.keywords || []).find(function (k) { return k.k === 'exploit'; });
+        if (ex) {
+          const maxK = Math.min(ex.n, SB.allUnits(state, me).length);
+          for (let k2 = 1; k2 <= maxK; k2++) {
+            if (Math.max(0, baseCost - 2 * k2) <= SB.readyResources(state, me)) {
+              acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId, exploit: k2 });
+            }
+          }
+        }
       } else if (card.type === 'event') {
         acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId });
       } else if (card.type === 'upgrade') {
@@ -82,6 +100,10 @@
             const traits = (SB.unitDef(u).traits || []).concat(SB.card(u.cardId).traits || []);
             if (f.notTrait && traits.indexOf(f.notTrait) >= 0) return;
             if (f.trait && traits.indexOf(f.trait) < 0) return;
+          }
+          if (card.costModAttach && card.costModAttach.cards.indexOf(u.cardId) >= 0) {
+            const c2 = Math.max(0, SB.cardCost(state, me, inst.cardId) + card.costModAttach.delta);
+            if (c2 > SB.readyResources(state, me)) return;
           }
           acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId, attachTo: u.uid });
         });
@@ -118,6 +140,7 @@
       (leaderCard.leaderSide.abilities || []).forEach(function (ab, ai) {
         if (ab.trigger !== 'action') return;
         if (p.leader.exhausted) return; // leader actions cost exhausting the leader
+        if (ab.gate && !SB.checkCondition(state, me, ab.gate, {})) return;
         const rCost = ab.cost || 0;
         if (rCost > SB.readyResources(state, me)) return;
         acts.push({ type: 'leaderAction', player: me, abilityIndex: ai });
@@ -128,7 +151,8 @@
     SB.allUnits(state, me).forEach(function (u) {
       (SB.unitDef(u).abilities || []).forEach(function (ab, ai) {
         if (ab.trigger !== 'action') return;
-        if (u.exhausted) return;
+        if (u.exhausted && !ab.noExhaust) return;
+        if (ab.oncePerRound && u.usedActionRound === state.round) return;
         if ((ab.cost || 0) > SB.readyResources(state, me)) return;
         acts.push({ type: 'unitAction', player: me, uid: u.uid, abilityIndex: ai });
       });
@@ -313,6 +337,7 @@
     } else if (action.type === 'leaderAction') {
       const ab = SB.card(p.leader.cardId).leaderSide.abilities[action.abilityIndex];
       expect(ab && ab.trigger === 'action' && !p.leader.exhausted, action);
+      expect(!ab.gate || SB.checkCondition(state, me, ab.gate, {}), action);
       payResources(state, me, ab.cost || 0);
       p.leader.exhausted = true;
       state.log.push({ type: 'leaderAction', player: me, sound: 'ability' });
@@ -322,8 +347,10 @@
       expect(u && u.owner === me && !u.exhausted, action);
       const ab = SB.unitDef(u).abilities[action.abilityIndex];
       expect(ab && ab.trigger === 'action', action);
+      expect(!(ab.oncePerRound && u.usedActionRound === state.round), action);
       payResources(state, me, ab.cost || 0);
-      u.exhausted = true;
+      if (ab.oncePerRound) u.usedActionRound = state.round;
+      if (!ab.noExhaust) u.exhausted = true;
       state.log.push({ type: 'unitAction', uid: u.uid, sound: 'ability' });
       SB.queueEffects(state, me, ab.effects, { sourceUid: u.uid, cardId: u.cardId, condition: ab.condition });
     } else {
@@ -349,7 +376,24 @@
       : p.hand[action.handIndex];
     expect(inst && inst.cardId === action.cardId, action);
     const card = SB.card(inst.cardId);
-    const cost = Math.max(0, SB.cardCost(state, me, inst.cardId) - (mods.discount || 0));
+    let cost = Math.max(0, SB.cardCost(state, me, inst.cardId) - (mods.discount || 0));
+    if (action.exploit) cost = Math.max(0, cost - 2 * action.exploit);
+    if (action.attachTo && card.costModAttach) {
+      const tgt = SB.findUnit(state, action.attachTo);
+      if (tgt && card.costModAttach.cards.indexOf(tgt.cardId) >= 0) {
+        cost = Math.max(0, cost + card.costModAttach.delta);
+      }
+    }
+    // Temporary "next N matching cards cost X less" grants.
+    if (p.discounts) {
+      for (const d of p.discounts) {
+        if (d.remaining <= 0) continue;
+        if (d.filter.trait && (card.traits || []).indexOf(d.filter.trait) < 0) continue;
+        cost = Math.max(0, cost - d.amount);
+        d.remaining -= 1;
+        break;
+      }
+    }
     expect(cost <= SB.readyResources(state, me), action);
     payResources(state, me, cost);
     if (action.fromDeckTop) p.deck.shift();
@@ -375,6 +419,11 @@
           op: { op: 'ambushAttack', target: null } });
       }
       SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
+      if (action.exploit) {
+        for (let k3 = 0; k3 < action.exploit; k3++) {
+          state.queue.unshift({ step: 'exploitPick', player: me, forUid: unit.uid });
+        }
+      }
       // "When you play another unit" observers on other friendly units.
       SB.allUnits(state, me).forEach(function (obs) {
         if (obs.uid === unit.uid) return;
@@ -569,6 +618,26 @@
   }
 
   SB.queueSteps = SB.queueSteps || {};
+  SB.queueSteps.exploitPick = {
+    actions: function (state, itemStep) {
+      const acts = [];
+      SB.allUnits(state, itemStep.player).forEach(function (u) {
+        if (u.uid === itemStep.forUid) return; // cannot exploit the card being played
+        acts.push({ type: 'exploitUnit', player: itemStep.player, uid: u.uid });
+      });
+      return acts.length ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      const u = SB.findUnit(state, action.uid);
+      if (!u) return;
+      state.efxExploit = state.efxExploit || {};
+      const key = String(itemStep.forUid);
+      state.efxExploit[key] = state.efxExploit[key] || [];
+      state.efxExploit[key].push(SB.unitPower(state, u));
+      state.log.push({ type: 'exploited', uid: u.uid, sound: 'destroy' });
+      SB.defeatUnit(state, u, {});
+    },
+  };
   SB.queueSteps.leaderTriggerOffer = {
     actions: function (state, itemStep) {
       const p = state.players[itemStep.player];
@@ -666,7 +735,8 @@
     state.active = state.initiative;
     state.defeatedThisPhase = [];
     state.efx = {};
-    state.players.forEach(function (p) { p.playedThisPhase = []; p.eventsThisRound = 0; });
+    state.efxExploit = {};
+    state.players.forEach(function (p) { p.playedThisPhase = []; p.eventsThisRound = 0; p.discounts = []; });
     state.log.push({ type: 'actionPhase', round: state.round });
   }
 

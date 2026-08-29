@@ -25,6 +25,10 @@
         }
       });
     });
+    // Bond links: a unit that buffs one specific other unit while it remains in play.
+    SB.allUnits(state).forEach(function (src) {
+      if (src.bondTarget === unit.uid && src.bondGrant) grants.push(src.bondGrant);
+    });
     return grants;
   };
 
@@ -37,6 +41,14 @@
     let h = baseMaxHp(state, unit);
     SB.auraGrants(state, unit).forEach(function (g) { h += (g.hp || 0); });
     return h;
+  };
+  const baseKeywordTotal = SB.keywordTotal;
+  SB.keywordTotal = function (state, unit, k) {
+    let n = baseKeywordTotal(state, unit, k);
+    SB.auraGrants(state, unit).forEach(function (g) {
+      (g.keywords || []).forEach(function (kw) { if (kw.k === k) n += (kw.n || 0); });
+    });
+    return n;
   };
   const baseHasKeyword = SB.hasKeyword;
   SB.hasKeyword = function (state, unit, k) {
@@ -431,6 +443,144 @@
   // Return an upgrade from your discard pile to your hand.
   O.upgradeFromDiscard = function (state, item) {
     state.queue.unshift({ step: 'upgradeFromDiscardPick', player: item.controller, optional: item.op.optional !== false });
+  };
+
+  // Persistent single-target buff while the source remains in play.
+  O.bondBuff = function (state, item, target) {
+    const src = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
+    const u = SB.findUnit(state, target.uid);
+    if (!src || !u) return;
+    src.bondTarget = u.uid;
+    src.bondGrant = { power: item.op.power || 0, hp: item.op.hp || 0 };
+    state.log.push({ type: 'bonded', uid: src.uid, to: u.uid, sound: 'buff' });
+  };
+
+  // Temporary per-player cost discount for the next N matching cards this phase.
+  O.grantDiscount = function (state, item) {
+    const p = state.players[item.controller];
+    p.discounts = p.discounts || [];
+    p.discounts.push({ amount: item.op.amount, remaining: item.op.count || 1, filter: item.op.filter || {} });
+    state.log.push({ type: 'discountGranted', player: item.controller, sound: 'buff' });
+  };
+
+  // Take a matching card from your discard pile into hand.
+  O.takeFromDiscard = function (state, item) {
+    state.queue.unshift({ step: 'takeFromDiscardPick', player: item.controller,
+      filter: item.op.filter || {}, optional: item.op.optional !== false });
+  };
+
+  SB.queueSteps.takeFromDiscardPick = {
+    actions: function (state, itemStep) {
+      const p = state.players[itemStep.player];
+      const acts = [];
+      p.discard.forEach(function (inst, i) {
+        const c = SB.card(inst.cardId);
+        const f = itemStep.filter;
+        if (f.type && c.type !== f.type) return;
+        if (f.trait && (c.traits || []).indexOf(f.trait) < 0) return;
+        if (f.defeatedThisPhase && !(state.defeatedThisPhase || []).some(function (d) { return d.uid === inst.uid; })) return;
+        acts.push({ type: 'takeFromDiscard', player: itemStep.player, index: i });
+      });
+      if (acts.length === 0) return null;
+      if (itemStep.optional) acts.push({ type: 'takeFromDiscard', player: itemStep.player, index: -1 });
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.index < 0) return;
+      const p = state.players[itemStep.player];
+      const inst = p.discard.splice(action.index, 1)[0];
+      p.hand.push(inst);
+      state.log.push({ type: 'tookFromDiscard', player: itemStep.player, sound: 'draw' });
+    },
+  };
+
+  // Each player (controller first) defeats a non-leader unit they control.
+  O.eachPlayerDefeatOwn = function (state, item) {
+    state.queue.unshift({ step: 'defeatOwnPick', player: SB.other(item.controller) });
+    state.queue.unshift({ step: 'defeatOwnPick', player: item.controller });
+  };
+
+  SB.queueSteps.defeatOwnPick = {
+    actions: function (state, itemStep) {
+      const acts = [];
+      SB.allUnits(state, itemStep.player).forEach(function (u) {
+        if (SB.card(u.cardId).type === 'leader') return;
+        acts.push({ type: 'defeatOwn', player: itemStep.player, uid: u.uid });
+      });
+      return acts.length ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      const u = SB.findUnit(state, action.uid);
+      if (u) SB.defeatUnit(state, u, {});
+    },
+  };
+
+  // Exhaust any number of matching friendly ready units; deal 1 damage to the
+  // defending player's base for each.
+  O.massExhaustForBaseDamage = function (state, item) {
+    const t = item.ctx && item.ctx.attackTarget;
+    const basePlayer = t ? (t.kind === 'base' ? t.player : (function () {
+      const u = SB.findUnit(state, t.uid); return u ? u.owner : null;
+    })()) : null;
+    if (basePlayer == null) return;
+    state.queue.unshift({ step: 'massExhaustPick', player: item.controller,
+      trait: item.op.trait, basePlayer: basePlayer });
+  };
+
+  SB.queueSteps.massExhaustPick = {
+    actions: function (state, itemStep) {
+      const acts = [{ type: 'massExhaust', player: itemStep.player, uid: null }]; // stop
+      SB.allUnits(state, itemStep.player).forEach(function (u) {
+        if (u.exhausted) return;
+        if (itemStep.trait && SB.unitTraits(state, u).indexOf(itemStep.trait) < 0) return;
+        acts.push({ type: 'massExhaust', player: itemStep.player, uid: u.uid });
+      });
+      return acts.length > 1 ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.uid == null) return;
+      const u = SB.findUnit(state, action.uid);
+      if (!u || u.exhausted) return;
+      u.exhausted = true;
+      state.log.push({ type: 'exhausted', uid: u.uid });
+      SB.damageBase(state, itemStep.basePlayer, 1, 'effect');
+      // Keep offering until the player stops or runs out.
+      state.queue.unshift({ step: 'massExhaustPick', player: itemStep.player,
+        trait: itemStep.trait, basePlayer: itemStep.basePlayer });
+    },
+  };
+
+  // Put N cards from hand on the bottom of the deck (chosen one at a time).
+  O.bottomFromHand = function (state, item) {
+    for (let i = 0; i < (item.op.amount || 1); i++) {
+      state.queue.unshift({ step: 'bottomHandPick', player: item.controller });
+    }
+  };
+
+  SB.queueSteps.bottomHandPick = {
+    actions: function (state, itemStep) {
+      const p = state.players[itemStep.player];
+      if (p.hand.length === 0) return null;
+      return p.hand.map(function (_, i) {
+        return { type: 'bottomCard', player: itemStep.player, handIndex: i };
+      });
+    },
+    apply: function (state, itemStep, action) {
+      const p = state.players[itemStep.player];
+      const inst = p.hand.splice(action.handIndex, 1)[0];
+      p.deck.push(inst);
+      state.log.push({ type: 'bottomedCard', player: itemStep.player });
+    },
+  };
+
+  // For each unit exploited while playing this card, optionally deal damage equal
+  // to that unit's power to an enemy unit.
+  O.damagePerExploited = function (state, item) {
+    const powers = (state.efxExploit && state.efxExploit[String(item.ctx && item.ctx.sourceUid)]) || [];
+    const copies = powers.map(function (p2) {
+      return { op: 'damage', amount: p2, target: { who: 'enemy', what: 'unit', optional: true } };
+    });
+    if (copies.length) SB.queueEffects(state, item.controller, copies, item.ctx);
   };
 
   SB.queueSteps.moveUpgradePick = {

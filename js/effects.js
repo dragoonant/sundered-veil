@@ -30,9 +30,20 @@
         if (sel.who === 'enemy' && u.owner === controller) return;
         if (sel.arena && SB.arenaOf(state, u) !== sel.arena) return;
         if (sel.trait && SB.unitTraits(state, u).indexOf(sel.trait) < 0) return;
+        if (sel.traitOrCards) {
+          const okT = SB.unitTraits(state, u).indexOf(sel.traitOrCards.trait) >= 0;
+          const okC = (sel.traitOrCards.cards || []).indexOf(u.cardId) >= 0;
+          if (!okT && !okC) return;
+        }
+        if (sel.tokenOnly && !SB.card(u.cardId).token) return;
         if (sel.maxCost != null && SB.card(u.cardId).cost > sel.maxCost) return;
         if (sel.minCost != null && SB.card(u.cardId).cost < sel.minCost) return;
         if (sel.minPower != null && SB.unitPower(state, u) < sel.minPower) return;
+        if (sel.maxPower != null && SB.unitPower(state, u) > sel.maxPower) return;
+        if (sel.maxCostRefPlayed) {
+          const pc = ctx.playedCardId ? SB.card(ctx.playedCardId).cost : null;
+          if (pc == null || SB.card(u.cardId).cost > pc) return;
+        }
         if (sel.powerLessThanSource) {
           const src = SB.findUnit(state, ctx.sourceUid);
           if (!src || SB.unitPower(state, u) >= SB.unitPower(state, src)) return;
@@ -146,8 +157,11 @@
     sources.forEach(function (src) {
       (src.abilities || []).forEach(function (ab) {
         if (ab.trigger !== trigger) return;
+        if (ab.playedTrait && (!ctx || !ctx.playedCardId ||
+            (SB.card(ctx.playedCardId).traits || []).indexOf(ab.playedTrait) < 0)) return;
         SB.queueEffects(state, unit.owner, ab.effects, {
           sourceUid: unit.uid, cardId: unit.cardId, condition: ab.condition,
+          playedCardId: ctx && ctx.playedCardId,
         });
       });
     });
@@ -263,6 +277,12 @@
         const has = SB.efx(state, ctx)[cond.name] != null;
         return cond.not ? !has : has;
       }
+      case 'coordinate':
+        return SB.allUnits(state, controller).length >= 3;
+      case 'baseDamageAtLeast':
+        return state.players[controller].base.damage >= cond.n;
+      case 'controlsTokenUnit':
+        return SB.allUnits(state, controller).some(function (u) { return SB.card(u.cardId).token; });
       case 'controlUnitWithAspect':
         return SB.allUnits(state, controller).some(function (u) {
           return (SB.card(u.cardId).aspects || []).indexOf(cond.aspect) >= 0 && u.uid !== ctx.sourceUid;
