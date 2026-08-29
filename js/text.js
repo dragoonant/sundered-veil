@@ -24,29 +24,44 @@
     return s;
   }
 
+  // Where a target was chosen by an earlier op (useTarget), or an amount is a
+  // reference, describe them symbolically. Keep in step with SB.resolveAmount.
+  function targetText(op) {
+    if (op.useTarget) return 'the chosen unit';
+    return describeTarget(op.target);
+  }
+  function amountText(op) {
+    if (op.amountRef == null) return String(op.amount);
+    if (op.amountRef === 'lastHealed') return 'that much';
+    if (op.amountRef === 'excess') return 'the excess';
+    if (op.amountRef === 'friendlyInTargetArena') return 'as much as the number of friendly units in its arena';
+    if (/^powerOf:/.test(op.amountRef)) return 'as much as the chosen unit’s power';
+    return String(op.amount);
+  }
+
   // One clause per op. Keep each in step with SB.ops[<op>].
   const opText = {
-    damage: function (op) { return 'deal ' + op.amount + ' damage to ' + describeTarget(op.target); },
-    heal: function (op) { return 'heal ' + op.amount + ' damage from ' + describeTarget(op.target); },
+    damage: function (op) { return 'deal ' + amountText(op) + ' damage to ' + targetText(op); },
+    heal: function (op) { return 'heal ' + amountText(op) + ' damage from ' + targetText(op); },
     draw: function (op) { return 'draw ' + ((op.amount || 1) === 1 ? 'a card' : op.amount + ' cards'); },
-    shield: function (op) { return 'give a shield to ' + describeTarget(op.target); },
-    experience: function (op) { return 'give an experience token to ' + describeTarget(op.target); },
+    shield: function (op) { return 'give a shield to ' + targetText(op); },
+    experience: function (op) { return 'give ' + ((op.amount||1)===1?'an experience token':op.amount+' experience tokens') + ' to ' + targetText(op); },
     buffTemp: function (op) {
       const p = op.power || 0, h = op.hp || 0;
       const stat = (p >= 0 ? '+' : '') + p + '/' + (h >= 0 ? '+' : '') + h;
-      return 'give ' + describeTarget(op.target) + ' ' + stat + ' for this round';
+      return 'give ' + targetText(op) + ' ' + stat + ' for this round';
     },
-    defeat: function (op) { return 'defeat ' + describeTarget(op.target); },
-    exhaust: function (op) { return 'exhaust ' + describeTarget(op.target); },
-    ready: function (op) { return 'ready ' + describeTarget(op.target); },
-    returnHand: function (op) { return 'return ' + describeTarget(op.target) + ' to its owner’s hand'; },
+    defeat: function (op) { return 'defeat ' + targetText(op); },
+    exhaust: function (op) { return 'exhaust ' + targetText(op); },
+    ready: function (op) { return 'ready ' + targetText(op); },
+    returnHand: function (op) { return 'return ' + targetText(op) + ' to its owner’s hand'; },
     damageAll: function (op) { return 'deal ' + op.amount + ' damage to each ' + scopeNoun(op.scope); },
     buffAll: function (op) {
       const stat = (op.power >= 0 ? '+' : '') + (op.power || 0) + '/' + (op.hp >= 0 ? '+' : '') + (op.hp || 0);
       return 'give each ' + scopeNoun(op.scope) + ' ' + stat + ' for this round';
     },
     giveKeyword: function (op) {
-      return 'give ' + describeTarget(op.target) + ' ' + (SB.names.keywords[op.k] || op.k) + ' for this round';
+      return 'give ' + targetText(op) + ' ' + (SB.names.keywords[op.k] || op.k) + ' for this round';
     },
     discard: function (op) {
       const who = op.who === 'self' ? 'you discard' : 'your opponent discards';
@@ -80,10 +95,11 @@
     resourceTopDeck: function () { return 'put the top card of your deck into play as a resource'; },
     pickUnit: function (op) { return 'choose ' + describeTarget(op.target); },
     dividedDamage: function (op) {
-      return 'deal ' + op.amount + ' damage divided as you choose among ' + scopeNoun(op.scope || { who: 'enemy', what: 'unit' }) + 's';
+      return 'deal ' + amountText(op) + ' damage divided as you choose among ' + scopeNoun(op.scope || { who: 'enemy', what: 'unit' }) + 's';
     },
     attackWith: function (op) {
-      let s = 'attack with ' + describeTarget(op.target);
+      let s = 'attack with ' + (op.useTarget ? 'the chosen unit' : describeTarget(op.target));
+      if (op.optionalAttack) s = 'you may ' + s;
       const perks = [];
       if (op.bonusPower) perks.push('it gets +' + op.bonusPower + '/+0 for this attack');
       if (op.firstStrike) perks.push('it deals its combat damage first');
@@ -111,12 +127,13 @@
       return chooser + ' one — ' + describeEffectList(op.a.effects) + '; or ' + describeEffectList(op.b.effects);
     },
     selfToResource: function () { return 'put this card into play as a resource'; },
-    healFull: function (op) { return 'heal all damage from ' + describeTarget(op.target); },
-    stunExhaust: function (op) { return 'exhaust ' + describeTarget(op.target) + ' — it cannot ready this round'; },
+    healFull: function (op) { return 'heal all damage from ' + targetText(op); },
+    stunExhaust: function (op) { return 'exhaust ' + targetText(op) + ' — it cannot ready this round'; },
     opponentMayReady: function () { return 'your opponent may ready one of their units'; },
   };
 
   function describeEffectList(effects) {
+    if (!effects || effects.length === 0) return 'do nothing';
     return effects.map(function (op) {
       const fn = opText[op.op];
       if (!fn) throw new Error('no text for op ' + op.op);
@@ -166,6 +183,7 @@
     friendlyDefeatedThisPhase: function () { return 'if a friendly unit was defeated this phase'; },
     attachedIs: function () { return 'if attached to the named champion'; },
     controlCard: function () { return 'if you control the named champion'; },
+    bearerHasTrait: function (c) { return 'if the attached unit is a ' + (SB.names.traits[c.trait] || c.trait) + ' unit'; },
     milledNonUnit: function () { return 'if the discarded card was not a unit'; },
     saved: function (c) { return c.not ? 'if no target was chosen' : 'if a target was chosen'; },
     selfDamaged: function () { return 'if this unit is damaged'; },

@@ -34,6 +34,9 @@ const KW_FLAG = ['Sentinel', 'Saboteur', 'Ambush', 'Overwhelm', 'Shielded', 'Gri
 function parseKeywords(text) {
   const kws = [];
   let rest = text;
+  // Strip reminder parentheticals BEFORE keyword matching — "Sentinel (Units...)"
+  // is a bare keyword with reminder text, not an ability sentence.
+  rest = rest.replace(/\(([^()]|\([^()]*\))*\)/g, '').replace(/[ \t]+\n/g, '\n');
   for (const k of ['Raid', 'Restore', 'Exploit']) {
     const re = new RegExp(k + '\\s+(\\d+)', 'g');
     rest = rest.replace(re, (m, n) => { kws.push({ k: k.toLowerCase(), n: Number(n) }); return ''; });
