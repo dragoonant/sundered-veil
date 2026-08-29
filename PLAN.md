@@ -94,3 +94,19 @@ prebuilt 50-card decks. Grow after the loop is fun.
 Phases 0–3 land together as the foundation (engine + tests before any UI). Then UI with
 placeholder art, then AI, then theme/art/audio last — art is the most expensive and least
 reworkable step, so it waits until names and card pool are stable.
+
+## Status (2026-08-29, autonomous build session)
+
+- DONE Phase 0–3: repo hygiene, engine, content system, tests (40 green: text-quality,
+  200-game fuzz, 16-deck matrix, reproducibility, immutability, AI pinned decisions,
+  AI-vs-AI full game).
+- DONE expanded scope: all 16 precon decks (3 two-player starters + 10 spotlight decks,
+  sets 1–8), 408 unique cards + 6 tokens, every mechanic implemented (see DEVIATIONS.md
+  for the few logged digital-model simplifications).
+- DONE Phase 4–5: playable click UI with generic choice bar for every queue step; AI
+  with three difficulties (docs/ai.md).
+- DONE Phase 6 naming: "The Sundered Veil" theme (THEME.md), 414 original names.
+- Art: pipeline live (tools/gen-art.mjs, HF router → FLUX.1-schnell); prompts in
+  tools/art-prompts.json; generated files land in gitignored art/.
+- Sound: pipeline built (tools/gen-sfx.mjs + js/sound.js) — BLOCKED on a valid
+  ElevenLabs key (.elevenlabs_key is rejected by the API).
