@@ -131,17 +131,10 @@
         // keep it legal if the unit has any onAttack ability, else prune the noise.
         if (!hasTrigger(u, 'onAttack') && SB.keywordTotal(state, u, 'raid') === 0) return;
       }
-      const arena = SB.arenaOf(state, u);
-      const enemies = state[arena].filter(function (e) { return e.owner !== me; });
-      const sentinels = enemies.filter(function (e) { return SB.hasKeyword(state, e, 'sentinel'); });
-      const sab = SB.hasKeyword(state, u, 'saboteur');
-      const targets = (sentinels.length > 0 && !sab) ? sentinels : enemies;
-      targets.forEach(function (e) {
-        acts.push({ type: 'attack', player: me, attacker: u.uid, target: { kind: 'unit', uid: e.uid } });
+      if ((SB.unitDef(u).staticFlags || []).indexOf('attackOnlyDamaged') >= 0 && u.damage === 0) return;
+      SB.attackTargets(state, u).forEach(function (t) {
+        acts.push({ type: 'attack', player: me, attacker: u.uid, target: t });
       });
-      if (sentinels.length === 0 || sab) {
-        acts.push({ type: 'attack', player: me, attacker: u.uid, target: { kind: 'base', player: SB.other(me) } });
-      }
     });
 
     // Leader: deploy epic action / leader-side action abilities.
@@ -161,6 +154,7 @@
         if (ab.trigger !== 'action') return;
         if (p.leader.exhausted) return; // leader actions cost exhausting the leader
         if (ab.gate && !SB.checkCondition(state, me, ab.gate, {})) return;
+        if (ab.forceCost && !p.force) return;
         const rCost = ab.cost || 0;
         if (rCost > SB.readyResources(state, me)) return;
         acts.push({ type: 'leaderAction', player: me, abilityIndex: ai });
@@ -372,6 +366,8 @@
       const ab = SB.card(p.leader.cardId).leaderSide.abilities[action.abilityIndex];
       expect(ab && ab.trigger === 'action' && !p.leader.exhausted, action);
       expect(!ab.gate || SB.checkCondition(state, me, ab.gate, {}), action);
+      expect(!ab.forceCost || p.force, action);
+      if (ab.forceCost) { p.force = false; state.log.push({ type: 'forceUsed', player: me, sound: 'ability' }); }
       payResources(state, me, ab.cost || 0);
       p.leader.exhausted = true;
       state.log.push({ type: 'leaderAction', player: me, sound: 'ability' });
@@ -406,6 +402,7 @@
     mods = mods || {};
     const p = state.players[me];
     const inst = action.fromDeckTop ? p.deck[0]
+      : action.fromDeckIndex != null ? p.deck[action.fromDeckIndex]
       : action.fromDiscard != null ? p.discard[action.fromDiscard]
       : p.hand[action.handIndex];
     expect(inst && inst.cardId === action.cardId, action);
@@ -435,6 +432,7 @@
     expect(cost <= SB.readyResources(state, me), action);
     payResources(state, me, cost);
     if (action.fromDeckTop) p.deck.shift();
+    else if (action.fromDeckIndex != null) p.deck.splice(action.fromDeckIndex, 1);
     else if (action.fromDiscard != null) p.discard.splice(action.fromDiscard, 1);
     else p.hand.splice(action.handIndex, 1);
     p.playedThisPhase = p.playedThisPhase || [];
@@ -468,6 +466,11 @@
           op: { op: 'ambushAttack', target: null } });
       }
       SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
+      if (p.echoNextOnPlay && (SB.card(inst.cardId).abilities || []).some(function (ab) { return ab.trigger === 'onPlay'; })) {
+        delete p.echoNextOnPlay;
+        SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
+        state.log.push({ type: 'echoedOnPlay', uid: unit.uid, notice: true });
+      }
       if (action.exploit) {
         for (let k3 = 0; k3 < action.exploit; k3++) {
           state.queue.unshift({ step: 'exploitPick', player: me, forUid: unit.uid });
@@ -520,16 +523,7 @@
   function startAttack(state, me, action) {
     const attacker = SB.findUnit(state, action.attacker);
     expect(attacker && attacker.owner === me && !attacker.exhausted, action);
-    attacker.exhausted = true;
-    state.log.push({ type: 'attackDeclared', attacker: attacker.uid, target: action.target, sound: 'attack' });
-    // Damage step resolves AFTER on-attack triggers: append to queue tail, then
-    // fire triggers (which prepend). Restore heals in the damage step.
-    state.queue.push({ step: 'combatDamage', attackerUid: attacker.uid, target: action.target, player: me });
-    SB.fireTriggers(state, 'onAttack', attacker, { sourceUid: attacker.uid, attackTarget: action.target });
-    if (action.target.kind === 'unit') {
-      const defender = SB.findUnit(state, action.target.uid);
-      if (defender) SB.fireTriggers(state, 'whenAttacked', defender, { sourceUid: defender.uid, attackerUid: attacker.uid });
-    }
+    SB.performAttack(state, attacker, action.target, {});
   }
 
   // Ambush is modeled as an op so it flows through the normal choice machinery.
@@ -637,6 +631,14 @@
       const defender = SB.findUnit(state, target.uid);
       if (defender) SB.fireTriggers(state, 'whenAttacked', defender, { sourceUid: defender.uid, attackerUid: attacker.uid });
     }
+    // Base ability: gain the Force when a friendly Force unit attacks.
+    const baseCard = SB.card(state.players[attacker.owner].base.cardId);
+    if (SB.unitTraits(state, attacker).indexOf('tr12') >= 0) {
+      (baseCard.abilities || []).forEach(function (ab) {
+        if (ab.trigger !== 'onForceUnitAttack') return;
+        SB.queueEffects(state, attacker.owner, ab.effects, { sourceUid: attacker.uid });
+      });
+    }
   };
 
   // Legal attack targets for a unit (sentinel/saboteur rules) — shared with the
@@ -644,7 +646,12 @@
   SB.attackTargets = function (state, unit) {
     const me = unit.owner;
     const arena = SB.arenaOf(state, unit);
-    const enemies = state[arena].filter(function (e) { return e.owner !== me; });
+    const enemies = state[arena].filter(function (e) {
+      if (e.owner === me) return false;
+      // Hidden: cannot be attacked during the round it was played.
+      if (SB.hasKeyword(state, e, 'hidden') && e.enteredRound === state.round) return false;
+      return true;
+    });
     const sentinels = enemies.filter(function (e) { return SB.hasKeyword(state, e, 'sentinel'); });
     const sab = SB.hasKeyword(state, unit, 'saboteur');
     const pool = (sentinels.length > 0 && !sab) ? sentinels : enemies;
@@ -863,6 +870,10 @@
       else u.exhausted = false;
       u.temp = { power: 0, hp: 0 };
       delete u.tempKeywords;
+    });
+    // A unit kept alive past lethal by a this-round effect dies when it expires.
+    SB.allUnits(state).slice().forEach(function (u) {
+      if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
     });
     state.players.forEach(function (p) {
       p.resources.forEach(function (r) { r.exhausted = false; });

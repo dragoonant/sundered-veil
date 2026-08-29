@@ -29,6 +29,9 @@
     if (sel.pilotish) s += ' that is a pilot or carries one';
     if (sel.noPilot) s += ' without a pilot';
     if (sel.anyTrait) s += ' of an eligible kind';
+    if (sel.hasExperience) s += ' that has an experience token';
+    if (sel.hasSentinel) s += ' with Sentinel';
+    if (sel.remHpLessThanSourcePower) s += ' with less remaining HP than this unit’s power';
     if (sel.maxRemHp != null) s += ' with ' + sel.maxRemHp + ' or less remaining HP';
     if (sel.powerLessThanSource) s += ' with less power than this unit';
     if (sel.exhaustedOnly) s += ' that is exhausted';
@@ -51,6 +54,7 @@
     if (op.amountRef === 'excess') return 'the excess';
     if (op.amountRef === 'friendlyInTargetArena') return 'as much as the number of friendly units in its arena';
     if (/^powerOf:/.test(op.amountRef)) return 'as much as the chosen unit’s power';
+    if (op.amountRef === 'powerOfSource') return 'as much as this unit’s power in';
     if (op.amountRef === 'distinctDiscardCosts') return '1 for each different cost among cards in your discard pile';
     if (op.amountRef === 'oddFriendlyCount') return '1 for each friendly unit or upgrade with an odd cost';
     if (op.amountRef === 'targetRemHpMinus1') return '1 less than its remaining HP in';
@@ -104,7 +108,8 @@
       return who + ' ' + amountText(op) + ' indirect damage among their units and base';
     },
     searchDeck: function (op) {
-      let s = 'search ' + (op.depth ? 'the top ' + op.depth + ' cards of ' : '') + 'your deck for ' + filterNoun(op.filter) + ', reveal it, and draw it';
+      const verb = op.playIt ? (', reveal it, and play it' + (op.playDiscount ? ' for ' + op.playDiscount + ' less' : '')) : ', reveal it, and draw it';
+      let s = 'search ' + (op.depth ? 'the top ' + op.depth + ' cards of ' : '') + 'your deck for ' + filterNoun(op.filter) + verb;
       return s + ', then shuffle your deck';
     },
     readyResource: function (op) { return 'ready ' + (op.amountRef ? amountText(op) : (op.amount || 1)) + ' of your resources'; },
@@ -189,7 +194,9 @@
     takeFromDiscard: function (op) {
       return 'you may return ' + filterNoun(op.filter) + (op.filter && op.filter.defeatedThisPhase ? ' defeated this phase' : '') + ' from your discard pile to your hand';
     },
-    eachPlayerDefeatOwn: function () { return 'each player chooses and defeats a non-leader unit they control'; },
+    eachPlayerDefeatOwn: function (op) {
+      return (op.opponentOnly ? 'your opponent chooses' : 'each player chooses') + ' and defeats a non-leader unit they control';
+    },
     massExhaustForBaseDamage: function () {
       return 'exhaust any number of eligible friendly units — deal 1 damage to the defending base for each';
     },
@@ -206,6 +213,17 @@
       return s;
     },
     revealTop: function () { return 'reveal the top card of your deck'; },
+    gainForce: function () { return 'you gain your power token'; },
+    useForce: function () { return 'spend your power token'; },
+    defeatAll: function (op) { return 'defeat each ' + scopeNoun(op.scope); },
+    removeExperience: function (op) { return 'remove an experience token from ' + targetText(op); },
+    attackerPowerDelta: function (op) { return 'the attacker gets ' + op.amount + '/+0 for this attack'; },
+    exhaustBudget: function (op) { return 'exhaust any number of units with combined cost ' + op.budget + ' or less'; },
+    payForExperience: function (op) { return 'pay up to ' + op.max + ' resources — this unit gains an experience token for each'; },
+    bottomFromDiscard: function (op) {
+      return 'put up to ' + op.upTo + ' matching cards from your discard pile on the bottom of your deck';
+    },
+    echoNextOnPlay: function () { return 'the next time you use a when-played ability this round, use it again'; },
     damagePerExploited: function () {
       return 'for each unit exploited while playing this card, you may deal damage equal to its power to an enemy unit';
     },
@@ -257,6 +275,7 @@
     onDeployPilot: 'When deployed as a pilot',
     onPlayAsPilot: 'When played as a pilot',
     onNonCombatDamage: 'When you deal non-combat damage',
+    onForceUnitAttack: 'When a friendly mystic unit attacks',
   };
 
   const conditionText = {
@@ -264,6 +283,8 @@
       return 'if you control another ' + (SB.names.traits[c.trait] || c.trait) + ' unit';
     },
     hasInitiative: function () { return 'if you have the initiative'; },
+    hasForce: function () { return 'while you hold your power token'; },
+    isBearer: function () { return 'if the upgrade was played on this unit'; },
     baseDamaged: function () { return 'if your base is damaged'; },
     enemyBaseDamaged: function () { return 'if the enemy base is damaged'; },
     resourcesAtLeast: function (c) { return 'while you control ' + c.n + ' or more resources'; },

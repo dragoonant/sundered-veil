@@ -38,6 +38,12 @@
         if (sel.tokenOnly && !SB.card(u.cardId).token) return;
         if (sel.noPilot && SB.pilotCount(state, u) > 0) return;
         if (sel.anyTrait && !sel.anyTrait.some(function (tr) { return SB.unitTraits(state, u).indexOf(tr) >= 0; })) return;
+        if (sel.hasExperience && !(u.experience > 0)) return;
+        if (sel.hasSentinel && !SB.hasKeyword(state, u, 'sentinel')) return;
+        if (sel.remHpLessThanSourcePower) {
+          const src = SB.findUnit(state, ctx.sourceUid);
+          if (!src || SB.unitRemainingHp(state, u) >= SB.unitPower(state, src)) return;
+        }
         if (sel.pilotish) {
           const isPilot = SB.unitTraits(state, u).indexOf('tr30') >= 0;
           if (!isPilot && SB.pilotCount(state, u) === 0) return;
@@ -110,8 +116,9 @@
     }
     unit.damage += amount;
     state.log.push({ type: 'unitDamage', uid: unit.uid, amount: amount, sound: 'hit' });
-    if (unit.damage >= SB.unitMaxHp(state, unit)) SB.defeatUnit(state, unit, ctx);
-    else if (ctx && ctx.combat) SB.fireTriggers(state, 'whenCombatDamaged', unit, { sourceUid: unit.uid });
+    if (unit.damage >= SB.unitMaxHp(state, unit) && !SB.hasKeyword(state, unit, 'unkillableThisRound')) {
+      SB.defeatUnit(state, unit, ctx);
+    } else if (ctx && ctx.combat) SB.fireTriggers(state, 'whenCombatDamaged', unit, { sourceUid: unit.uid });
   };
 
   SB.defeatUnit = function (state, unit, ctx) {
@@ -177,9 +184,12 @@
         if (ab.trigger !== trigger) return;
         if (ab.playedTrait && (!ctx || !ctx.playedCardId ||
             (SB.card(ctx.playedCardId).traits || []).indexOf(ab.playedTrait) < 0)) return;
+        if (ab.playedUnique && (!ctx || !ctx.playedCardId || !SB.card(ctx.playedCardId).unique)) return;
         SB.queueEffects(state, unit.owner, ab.effects, {
           sourceUid: unit.uid, cardId: unit.cardId, condition: ab.condition,
-          playedCardId: ctx && ctx.playedCardId,
+          playedCardId: ctx && ctx.playedCardId, bearerUid: ctx && ctx.bearerUid,
+          attackerUid: ctx && ctx.attackerUid, attackTarget: ctx && ctx.attackTarget,
+          damagedUid: ctx && ctx.damagedUid,
         });
       });
     });
@@ -219,6 +229,10 @@
       if (!u) return 0;
       const arena = SB.arenaOf(state, u);
       return state[arena].filter(function (x) { return x.owner === item.controller; }).length;
+    }
+    if (op.amountRef === 'powerOfSource') {
+      const src = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
+      return src ? SB.unitPower(state, src) : 0;
     }
     if (op.amountRef === 'oddFriendlyCount') {
       let n = 0;
@@ -322,6 +336,10 @@
         const has = SB.efx(state, ctx)[cond.name] != null;
         return cond.not ? !has : has;
       }
+      case 'hasForce':
+        return !!state.players[controller].force;
+      case 'isBearer':
+        return ctx.sourceUid != null && ctx.sourceUid === ctx.bearerUid;
       case 'controlOtherSpaceUnit':
         return state.space.filter(function (u) { return u.owner === controller && u.uid !== ctx.sourceUid; }).length > 0;
       case 'discardedUnit':
@@ -456,7 +474,9 @@
         u.temp.power += (item.op.power || 0);
         u.temp.hp += (item.op.hp || 0);
         state.log.push({ type: 'buff', uid: u.uid, power: item.op.power || 0, hp: item.op.hp || 0, sound: 'buff' });
-        if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, item.ctx);
+        if (SB.unitRemainingHp(state, u) <= 0 && !SB.hasKeyword(state, u, 'unkillableThisRound')) {
+          SB.defeatUnit(state, u, item.ctx);
+        }
       }
     },
     defeat: function (state, item, target) {
@@ -480,6 +500,7 @@
     returnHand: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
       if (!u) return;
+      SB.efx(state, item.ctx).returnedCost = SB.card(u.cardId).cost;
       if (u.owner !== item.controller &&
           (SB.unitDef(u).staticFlags || []).indexOf('noEnemyDefeatReturn') >= 0) {
         state.log.push({ type: 'fizzle', why: 'immune', fizzled: true });

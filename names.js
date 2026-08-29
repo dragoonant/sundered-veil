@@ -18,6 +18,7 @@
       shielded: 'Shielded', grit: 'Grit', hidden: 'Hidden',
       bounty: 'Bounty', smuggle: 'Smuggle', exploit: 'Exploit',
       piloting: 'Piloting', coordinate: 'Coordinate', plot: 'Plot',
+      unkillableThisRound: 'Deathless (this round)',
     },
     decks: {},     // deckId -> display name
     ui: {
