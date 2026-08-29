@@ -8,7 +8,8 @@
   const ARENAS = ['ground', 'space'];
   const TRIGGERS = ['onPlay', 'onAttack', 'whenDefeated', 'onDeploy', 'onRegroup', 'action',
     'constant', 'onAttackEnds', 'whenAttacked', 'onCardPlayed', 'onUnitPlayed',
-    'combatConstant', 'onDefeatUnit'];
+    'combatConstant', 'onDefeatUnit', 'bounty', 'onSmuggle', 'onUpgradePlayed',
+    'whenCombatDamaged', 'combatAura'];
   const ASPECTS = ['command', 'aggression', 'cunning', 'vigilance', 'heroism', 'villainy'];
 
   function fail(id, msg) { throw new Error('content error [' + id + ']: ' + msg); }
@@ -22,7 +23,7 @@
     });
     (def.abilities || []).forEach(function (ab) {
       if (TRIGGERS.indexOf(ab.trigger) < 0) fail(id, 'unknown trigger ' + ab.trigger);
-      if (ab.trigger === 'constant' || ab.trigger === 'combatConstant') {
+      if (ab.trigger === 'constant' || ab.trigger === 'combatConstant' || ab.trigger === 'combatAura') {
         if (!ab.grant) fail(id, 'constant ability without grant');
         (ab.grant.keywords || []).forEach(function (kw) {
           if (!SB.names.keywords[kw.k]) fail(id, 'unknown granted keyword ' + kw.k);

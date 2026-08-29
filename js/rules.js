@@ -20,6 +20,15 @@
     return unit.upgrades.map(function (inst) { return SB.card(inst.cardId); });
   }
 
+  // All traits on a unit: its def, its card root, plus traits granted by upgrades.
+  SB.unitTraits = function (state, unit) {
+    let ts = (SB.unitDef(unit).traits || []).concat(SB.card(unit.cardId).traits || []);
+    unit.upgrades.forEach(function (inst) {
+      ts = ts.concat(SB.card(inst.cardId).grantTraits || []);
+    });
+    return ts;
+  };
+
   SB.unitKeywords = function (state, unit) {
     // Keyword instances from the unit itself plus its upgrades. Duplicate keywords
     // stack for numeric ones (raid, restore) and are redundant for boolean ones.
@@ -84,6 +93,17 @@
       cost += card.costMod.delta;
     }
     return Math.max(0, cost);
+  };
+
+  // Smuggle cost: printed smuggle cost + 2 per smuggle aspect icon not covered.
+  SB.smuggleCost = function (state, playerIdx, card, sm) {
+    const avail = SB.playerAspects(state, playerIdx).slice();
+    let penalty = 0;
+    (sm.aspects || []).forEach(function (a) {
+      const i = avail.indexOf(a);
+      if (i >= 0) avail.splice(i, 1); else penalty += 2;
+    });
+    return sm.cost + penalty;
   };
 
   SB.readyResources = function (state, playerIdx) {

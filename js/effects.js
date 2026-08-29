@@ -29,15 +29,18 @@
         if (sel.who === 'friendly' && u.owner !== controller) return;
         if (sel.who === 'enemy' && u.owner === controller) return;
         if (sel.arena && SB.arenaOf(state, u) !== sel.arena) return;
-        if (sel.trait && (SB.unitDef(u).traits || []).indexOf(sel.trait) < 0 &&
-            (SB.card(u.cardId).traits || []).indexOf(sel.trait) < 0) return;
+        if (sel.trait && SB.unitTraits(state, u).indexOf(sel.trait) < 0) return;
         if (sel.maxCost != null && SB.card(u.cardId).cost > sel.maxCost) return;
         if (sel.minCost != null && SB.card(u.cardId).cost < sel.minCost) return;
+        if (sel.minPower != null && SB.unitPower(state, u) < sel.minPower) return;
+        if (sel.powerLessThanSource) {
+          const src = SB.findUnit(state, ctx.sourceUid);
+          if (!src || SB.unitPower(state, u) >= SB.unitPower(state, src)) return;
+        }
         if (sel.damaged && u.damage === 0) return;
         if (sel.notSelf && u.uid === ctx.sourceUid) return;
         if (sel.aspect && (SB.card(u.cardId).aspects || []).indexOf(sel.aspect) < 0) return;
-        if (sel.notTrait && ((SB.unitDef(u).traits || []).indexOf(sel.notTrait) >= 0 ||
-            (SB.card(u.cardId).traits || []).indexOf(sel.notTrait) >= 0)) return;
+        if (sel.notTrait && SB.unitTraits(state, u).indexOf(sel.notTrait) >= 0) return;
         if (sel.maxRemHp != null && SB.unitRemainingHp(state, u) > sel.maxRemHp) return;
         if (sel.nonLeader && SB.card(u.cardId).type === 'leader') return;
         if (sel.leader && SB.card(u.cardId).type !== 'leader') return;
@@ -91,6 +94,7 @@
     unit.damage += amount;
     state.log.push({ type: 'unitDamage', uid: unit.uid, amount: amount, sound: 'hit' });
     if (unit.damage >= SB.unitMaxHp(state, unit)) SB.defeatUnit(state, unit, ctx);
+    else if (ctx && ctx.combat) SB.fireTriggers(state, 'whenCombatDamaged', unit, { sourceUid: unit.uid });
   };
 
   SB.defeatUnit = function (state, unit, ctx) {
@@ -138,6 +142,7 @@
   SB.fireTriggers = function (state, trigger, unit, ctx) {
     const def = SB.unitDef(unit);
     const sources = [def].concat(unit.upgrades.map(function (i) { return SB.card(i.cardId); }));
+    if (unit.tempAbilities) sources.push({ abilities: unit.tempAbilities });
     sources.forEach(function (src) {
       (src.abilities || []).forEach(function (ab) {
         if (ab.trigger !== trigger) return;
@@ -183,6 +188,14 @@
       const arena = SB.arenaOf(state, u);
       return state[arena].filter(function (x) { return x.owner === item.controller; }).length;
     }
+    if (op.amountRef === 'distinctDiscardCosts') {
+      const costs = new Set();
+      state.players[item.controller].discard.forEach(function (inst) {
+        const c = SB.card(inst.cardId).cost;
+        if (c != null) costs.add(c);
+      });
+      return costs.size;
+    }
     const m = op.amountRef.match(/^powerOf:(.+)$/);
     if (m) {
       const t = store[m[1]];
@@ -210,19 +223,15 @@
       case 'savedHasTrait': {
         const t = SB.efx(state, ctx)[cond.name];
         const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
-        if (!u) return false;
-        return (SB.unitDef(u).traits || []).indexOf(cond.trait) >= 0 ||
-          (SB.card(u.cardId).traits || []).indexOf(cond.trait) >= 0;
+        return !!u && SB.unitTraits(state, u).indexOf(cond.trait) >= 0;
       }
       case 'bearerHasTrait': {
         const bearer = SB.findUnit(state, ctx.sourceUid);
-        if (!bearer) return false;
-        return (SB.unitDef(bearer).traits || []).indexOf(cond.trait) >= 0 ||
-          (SB.card(bearer.cardId).traits || []).indexOf(cond.trait) >= 0;
+        return !!bearer && SB.unitTraits(state, bearer).indexOf(cond.trait) >= 0;
       }
       case 'controlUnitWithTrait':
         return SB.allUnits(state, controller).some(function (u) {
-          return (SB.unitDef(u).traits || []).indexOf(cond.trait) >= 0 && u.uid !== ctx.sourceUid;
+          return SB.unitTraits(state, u).indexOf(cond.trait) >= 0 && u.uid !== ctx.sourceUid;
         });
       case 'hasInitiative': return state.initiative === controller;
       case 'baseDamaged': return state.players[controller].base.damage > 0;
@@ -253,6 +262,31 @@
       case 'saved': {
         const has = SB.efx(state, ctx)[cond.name] != null;
         return cond.not ? !has : has;
+      }
+      case 'controlUnitWithAspect':
+        return SB.allUnits(state, controller).some(function (u) {
+          return (SB.card(u.cardId).aspects || []).indexOf(cond.aspect) >= 0 && u.uid !== ctx.sourceUid;
+        });
+      case 'bountyUnitUnique':
+        return !!(ctx.bountyCardId && SB.card(ctx.bountyCardId).unique);
+      case 'defenderHasBounty': {
+        const t = ctx.attackTarget;
+        const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+        if (!u) return false;
+        const sources = [SB.unitDef(u)].concat(u.upgrades.map(function (i2) { return SB.card(i2.cardId); }));
+        if (u.tempAbilities) sources.push({ abilities: u.tempAbilities });
+        return sources.some(function (s) {
+          return (s.abilities || []).some(function (ab) { return ab.trigger === 'bounty'; });
+        });
+      }
+      case 'selfUpgraded': {
+        const self = SB.findUnit(state, ctx.sourceUid);
+        return !!self && self.upgrades.length > 0;
+      }
+      case 'savedIsUnique': {
+        const t = SB.efx(state, ctx)[cond.name];
+        const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+        return !!u && !!SB.card(u.cardId).unique;
       }
       case 'selfDamaged': {
         const self = SB.findUnit(state, ctx.sourceUid);
@@ -403,7 +437,9 @@
       // Reuse a target chosen by an earlier op of this invocation.
       if (op.useTarget) {
         state.queue.shift();
-        const t = SB.efx(state, item.ctx)[op.useTarget];
+        const t = op.useTarget === '@defender'
+          ? (item.ctx && item.ctx.attackTarget && item.ctx.attackTarget.kind === 'unit' ? item.ctx.attackTarget : null)
+          : SB.efx(state, item.ctx)[op.useTarget];
         if (!t) {
           state.log.push({ type: 'fizzle', why: 'noSavedTarget', cardId: item.ctx && item.ctx.cardId, fizzled: true });
           continue;

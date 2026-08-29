@@ -87,9 +87,13 @@
     const u = SB.findUnit(state, target.uid);
     if (!u) return;
     if (u.exhausted && !item.op.ready) return;
+    let bonus = item.op.bonusPower || 0;
+    if (item.op.bonusIfTrait && SB.unitTraits(state, u).indexOf(item.op.bonusIfTrait.trait) >= 0) {
+      bonus += item.op.bonusIfTrait.amount;
+    }
     state.queue.unshift({ step: 'attackTargetChoice', player: item.controller, uid: u.uid,
-      bonusPower: item.op.bonusPower || 0, firstStrike: !!item.op.firstStrike, ready: !!item.op.ready,
-      optional: !!item.op.optionalAttack });
+      bonusPower: bonus, firstStrike: !!item.op.firstStrike, ready: !!item.op.ready,
+      optional: !!item.op.optionalAttack, bonusVsUnitsOnly: !!item.op.bonusVsUnitsOnly });
   };
 
   // Look at the top card of your deck and decide. modes ⊆ ['leave','bottom','discard','play'].
@@ -100,8 +104,9 @@
   // Play a card from hand via an effect. {filter?, discount?, entersReady?, defeatAtRegroup?, optional?}
   O.playFromHand = function (state, item) {
     state.queue.unshift({ step: 'playHandPick', player: item.controller, filter: item.op.filter || {},
-      discount: item.op.discount || 0, entersReady: !!item.op.entersReady,
-      defeatAtRegroup: !!item.op.defeatAtRegroup, optional: item.op.optional !== false });
+      discount: item.op.free ? 99 : (item.op.discount || 0), entersReady: !!item.op.entersReady,
+      defeatAtRegroup: !!item.op.defeatAtRegroup, optional: item.op.optional !== false,
+      withAmbush: !!item.op.withAmbush, zones: item.op.zones || ['hand'] });
   };
 
   // Mill: discard top N cards of own deck; records their types for conditions.
@@ -181,6 +186,7 @@
     const victim = SB.findUnit(state, target.uid);
     const captor = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
     if (!victim || !captor) return;
+    SB.collectBounties(state, victim);
     const arena = SB.arenaOf(state, victim);
     state[arena].splice(state[arena].indexOf(victim), 1);
     captor.captured = captor.captured || [];
@@ -293,13 +299,18 @@
       const depth = itemStep.depth || p.deck.length;
       const seen = p.deck.slice(0, depth);
       const matches = [];
+      function matchOne(c, f) {
+        if (f.type && c.type !== f.type) return false;
+        if (f.trait && (c.traits || []).indexOf(f.trait) < 0) return false;
+        if (f.maxCost != null && c.cost > f.maxCost) return false;
+        if (f.aspect && (c.aspects || []).indexOf(f.aspect) < 0) return false;
+        return true;
+      }
       seen.forEach(function (inst, i) {
         const c = SB.card(inst.cardId);
         const f = itemStep.filter;
-        if (f.type && c.type !== f.type) return;
-        if (f.trait && (c.traits || []).indexOf(f.trait) < 0) return;
-        if (f.maxCost != null && c.cost > f.maxCost) return;
-        if (f.aspect && (c.aspects || []).indexOf(f.aspect) < 0) return;
+        const ok = f.anyOf ? f.anyOf.some(function (sub) { return matchOne(c, sub); }) : matchOne(c, f);
+        if (!ok) return;
         matches.push({ type: 'searchTake', player: itemStep.player, deckIndex: i });
       });
       if (matches.length === 0) return null; // shuffle happens in apply-skip
@@ -324,6 +335,172 @@
       // random order; a full shuffle is mechanically equivalent for hidden zones.)
       p.deck = SB.shuffled(p.deck, SB.rng(SB.stateSeed(state, 'searchShuffle')));
       state.log.push({ type: 'deckShuffled', player: itemStep.player });
+    },
+  };
+
+  // Grant an ability to a unit until end of round.
+  O.grantAbilityTemp = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (!u) return;
+    u.tempAbilities = u.tempAbilities || [];
+    u.tempAbilities.push(item.op.ability);
+    state.log.push({ type: 'gainedAbility', uid: u.uid, sound: 'buff' });
+  };
+
+  // Modify the pending combat (queued combatDamage item for this attacker).
+  // {op:'attackBonus', amount} boosts the attacker; {defenderDelta} shifts the
+  // defender's retaliation power (min 0).
+  O.attackBonus = function (state, item) {
+    const cd = state.queue.find(function (q) {
+      return q.step === 'combatDamage' && q.attackerUid === (item.ctx && item.ctx.sourceUid);
+    });
+    if (!cd) return;
+    cd.bonusPower = (cd.bonusPower || 0) + (item.op.amount || 0);
+    cd.defenderPowerDelta = (cd.defenderPowerDelta || 0) + (item.op.defenderDelta || 0);
+    state.log.push({ type: 'attackModified', uid: item.ctx.sourceUid });
+  };
+
+  // Exhaust another friendly unit as a cost, then boost this attack.
+  O.exhaustFriendlyForBonus = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (!u || u.exhausted) return;
+    u.exhausted = true;
+    state.log.push({ type: 'exhausted', uid: u.uid });
+    O.attackBonus(state, item);
+  };
+
+  // Collect a unit's bounties as if defeated (without defeating it).
+  O.collectBountiesOf = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (u) SB.collectBounties(state, u);
+  };
+
+  // The defeated unit puts ITSELF into play as a resource (from its discard pile).
+  O.selfDefeatedToResource = function (state, item) {
+    const owner = state.players[item.controller];
+    const uid = item.ctx && item.ctx.sourceUid;
+    const i = owner.discard.findIndex(function (inst) { return inst.uid === uid; });
+    if (i < 0) return;
+    const inst = owner.discard.splice(i, 1)[0];
+    owner.resources.push({ instance: inst, exhausted: false });
+    state.log.push({ type: 'resourced', player: item.controller });
+  };
+
+  // Defeat a unit and remember how many upgrades it had.
+  O.defeatCountUpgrades = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (!u) return;
+    SB.efx(state, item.ctx)[item.op.saveCountAs || 'n'] = u.upgrades.length;
+    SB.defeatUnit(state, u, item.ctx);
+  };
+
+  // Queue `countRef` copies of an effect.
+  O.repeat = function (state, item) {
+    const n = SB.efx(state, item.ctx)[item.op.countRef] || 0;
+    const copies = [];
+    for (let i = 0; i < n; i++) copies.push(item.op.effect);
+    if (copies.length) SB.queueEffects(state, item.controller, copies, item.ctx);
+  };
+
+  // Mill 1; if the milled card shares an aspect with your base, return it to hand.
+  O.millMatchBaseAspect = function (state, item) {
+    const p = state.players[item.controller];
+    if (p.deck.length === 0) return;
+    const inst = p.deck.shift();
+    const baseAspects = SB.card(p.base.cardId).aspects || [];
+    const shares = (SB.card(inst.cardId).aspects || []).some(function (a) { return baseAspects.indexOf(a) >= 0; });
+    if (shares) {
+      p.hand.push(inst);
+      state.log.push({ type: 'milledToHand', player: item.controller, sound: 'draw' });
+    } else {
+      p.discard.push(inst);
+      state.log.push({ type: 'milled', player: item.controller, cardId: inst.cardId });
+    }
+  };
+
+  // Move an upgrade from one unit to another unit of the same controller.
+  O.moveUpgrade = function (state, item) {
+    state.queue.unshift({ step: 'moveUpgradePick', player: item.controller });
+  };
+
+  // Defeat an upgrade on any unit.
+  O.defeatUpgrade = function (state, item) {
+    state.queue.unshift({ step: 'defeatUpgradePick', player: item.controller });
+  };
+
+  // Return an upgrade from your discard pile to your hand.
+  O.upgradeFromDiscard = function (state, item) {
+    state.queue.unshift({ step: 'upgradeFromDiscardPick', player: item.controller, optional: item.op.optional !== false });
+  };
+
+  SB.queueSteps.moveUpgradePick = {
+    actions: function (state, itemStep) {
+      const acts = [];
+      SB.allUnits(state).forEach(function (src) {
+        src.upgrades.forEach(function (inst, ui) {
+          SB.allUnits(state, src.owner).forEach(function (dst) {
+            if (dst.uid === src.uid) return;
+            const card = SB.card(inst.cardId);
+            if (card.attachFilter && card.attachFilter.notTrait &&
+                SB.unitTraits(state, dst).indexOf(card.attachFilter.notTrait) >= 0) return;
+            acts.push({ type: 'moveUpgrade', player: itemStep.player, from: src.uid, index: ui, to: dst.uid });
+          });
+        });
+      });
+      if (acts.length === 0) return null;
+      acts.push({ type: 'moveUpgrade', player: itemStep.player, from: null }); // decline
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.from == null) return;
+      const src = SB.findUnit(state, action.from), dst = SB.findUnit(state, action.to);
+      if (!src || !dst) return;
+      const inst = src.upgrades.splice(action.index, 1)[0];
+      dst.upgrades.push(inst);
+      state.log.push({ type: 'attached', uid: dst.uid, cardId: inst.cardId, sound: 'attach' });
+    },
+  };
+
+  SB.queueSteps.defeatUpgradePick = {
+    actions: function (state, itemStep) {
+      const acts = [];
+      SB.allUnits(state).forEach(function (u) {
+        u.upgrades.forEach(function (inst, ui) {
+          acts.push({ type: 'defeatUpgrade', player: itemStep.player, uid: u.uid, index: ui });
+        });
+      });
+      return acts.length ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      const u = SB.findUnit(state, action.uid);
+      if (!u) return;
+      const inst = u.upgrades.splice(action.index, 1)[0];
+      if (!SB.card(inst.cardId).token) state.players[u.owner].discard.push(inst);
+      state.log.push({ type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
+      // Removing +HP can defeat the bearer.
+      if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
+    },
+  };
+
+  SB.queueSteps.upgradeFromDiscardPick = {
+    actions: function (state, itemStep) {
+      const p = state.players[itemStep.player];
+      const acts = [];
+      p.discard.forEach(function (inst, i) {
+        if (SB.card(inst.cardId).type === 'upgrade') {
+          acts.push({ type: 'takeFromDiscard', player: itemStep.player, index: i });
+        }
+      });
+      if (acts.length === 0) return null;
+      if (itemStep.optional) acts.push({ type: 'takeFromDiscard', player: itemStep.player, index: -1 });
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.index < 0) return;
+      const p = state.players[itemStep.player];
+      const inst = p.discard.splice(action.index, 1)[0];
+      p.hand.push(inst);
+      state.log.push({ type: 'tookFromDiscard', player: itemStep.player, sound: 'draw' });
     },
   };
 
@@ -357,6 +534,7 @@
       if (!u) return;
       SB.performAttack(state, u, action.target, {
         bonusPower: itemStep.bonusPower, firstStrike: itemStep.firstStrike, ready: itemStep.ready,
+        bonusVsUnitsOnly: itemStep.bonusVsUnitsOnly,
       });
     },
   };
@@ -427,17 +605,22 @@
     actions: function (state, itemStep) {
       const p = state.players[itemStep.player];
       const acts = [];
-      p.hand.forEach(function (inst, i) {
+      function consider(inst, i, zone) {
         const card = SB.card(inst.cardId);
         const f = itemStep.filter;
         if (f.type && card.type !== f.type) return;
         if (f.trait && (card.traits || []).indexOf(f.trait) < 0) return;
         if (f.maxCost != null && card.cost > f.maxCost) return;
+        if (f.aspect && (card.aspects || []).indexOf(f.aspect) < 0) return;
+        if (card.type === 'upgrade' || card.type === 'leader' || card.type === 'base') return;
         const cost = Math.max(0, SB.cardCost(state, itemStep.player, inst.cardId) - itemStep.discount);
         if (cost > SB.readyResources(state, itemStep.player)) return;
         if (card.type === 'unit' && card.unique &&
             SB.allUnits(state, itemStep.player).some(function (u) { return u.cardId === inst.cardId; })) return;
-        acts.push({ type: 'playHandCard', player: itemStep.player, handIndex: i, cardId: inst.cardId });
+        acts.push({ type: 'playHandCard', player: itemStep.player, handIndex: i, cardId: inst.cardId, zone: zone });
+      }
+      (itemStep.zones || ['hand']).forEach(function (z) {
+        (z === 'hand' ? p.hand : p.discard).forEach(function (inst, i) { consider(inst, i, z); });
       });
       if (acts.length === 0) return null;
       if (itemStep.optional) acts.push({ type: 'playHandCard', player: itemStep.player, handIndex: -1 });
@@ -445,9 +628,20 @@
     },
     apply: function (state, itemStep, action) {
       if (action.handIndex === -1) return;
-      SB.playCardWithMods(state, itemStep.player,
-        { handIndex: action.handIndex, cardId: action.cardId },
+      const playAction = action.zone === 'discard'
+        ? { fromDiscard: action.handIndex, cardId: action.cardId }
+        : { handIndex: action.handIndex, cardId: action.cardId };
+      SB.playCardWithMods(state, itemStep.player, playAction,
         { discount: itemStep.discount, entersReady: itemStep.entersReady, defeatAtRegroup: itemStep.defeatAtRegroup });
+      if (itemStep.withAmbush) {
+        const played = SB.allUnits(state, itemStep.player).find(function (u) {
+          return u.cardId === action.cardId && u.enteredRound === state.round && u.exhausted;
+        });
+        if (played && SB.card(action.cardId).type === 'unit') {
+          state.queue.push({ step: 'effect', controller: itemStep.player,
+            ctx: { sourceUid: played.uid, cardId: played.cardId }, op: { op: 'ambushAttack', target: null } });
+        }
+      }
     },
   };
 
@@ -465,10 +659,28 @@
     },
   };
 
-  // Release captured cards when the captor leaves play.
+  // ---- bounty --------------------------------------------------------------
+  // Bounty = ability {trigger:'bounty', effects}. When the unit is defeated or
+  // captured, the OPPONENT of its controller collects each bounty (chooses targets).
+  SB.collectBounties = function (state, unit) {
+    const collector = SB.other(unit.owner);
+    const sources = [SB.unitDef(unit)]
+      .concat(unit.upgrades.map(function (i) { return SB.card(i.cardId); }));
+    if (unit.tempAbilities) sources.push({ abilities: unit.tempAbilities });
+    sources.forEach(function (src) {
+      (src.abilities || []).forEach(function (ab) {
+        if (ab.trigger !== 'bounty') return;
+        state.log.push({ type: 'bountyCollected', uid: unit.uid, sound: 'claim' });
+        SB.queueEffects(state, collector, ab.effects, { bountyUnitUid: unit.uid, bountyCardId: unit.cardId });
+      });
+    });
+  };
+
+  // Release captured cards when the captor leaves play; collect bounties on defeat.
   const baseDefeat = SB.defeatUnit;
   SB.defeatUnit = function (state, unit, ctx) {
     releaseCaptured(state, unit);
+    SB.collectBounties(state, unit);
     baseDefeat(state, unit, ctx);
   };
   function releaseCaptured(state, unit) {

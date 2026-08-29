@@ -20,6 +20,13 @@
     let noun = sel.what === 'base' ? 'base' : sel.what === 'unitOrBase' ? 'unit or base' : 'unit';
     let s = 'a ' + (parts.length ? parts.join(' ') + ' ' : '') + noun;
     if (sel.maxCost != null) s += ' that costs ' + sel.maxCost + ' or less';
+    if (sel.minCost != null) s += ' that costs ' + sel.minCost + ' or more';
+    if (sel.minPower != null) s += ' with power ' + sel.minPower + ' or more';
+    if (sel.maxRemHp != null) s += ' with ' + sel.maxRemHp + ' or less remaining HP';
+    if (sel.powerLessThanSource) s += ' with less power than this unit';
+    if (sel.exhaustedOnly) s += ' that is exhausted';
+    if (sel.nonLeader) s += ' (non-leader)';
+    if (sel.nonUnique) s += ' (non-champion)';
     if (sel.damaged) s += ' that is damaged';       // engine: selectorCandidates .damaged
     return s;
   }
@@ -27,6 +34,7 @@
   // Where a target was chosen by an earlier op (useTarget), or an amount is a
   // reference, describe them symbolically. Keep in step with SB.resolveAmount.
   function targetText(op) {
+    if (op.useTarget === '@defender') return 'the defender';
     if (op.useTarget) return 'the chosen unit';
     return describeTarget(op.target);
   }
@@ -36,6 +44,7 @@
     if (op.amountRef === 'excess') return 'the excess';
     if (op.amountRef === 'friendlyInTargetArena') return 'as much as the number of friendly units in its arena';
     if (/^powerOf:/.test(op.amountRef)) return 'as much as the chosen unit’s power';
+    if (op.amountRef === 'distinctDiscardCosts') return '1 for each different cost among cards in your discard pile';
     return String(op.amount);
   }
 
@@ -130,7 +139,34 @@
     healFull: function (op) { return 'heal all damage from ' + targetText(op); },
     stunExhaust: function (op) { return 'exhaust ' + targetText(op) + ' — it cannot ready this round'; },
     opponentMayReady: function () { return 'your opponent may ready one of their units'; },
+    grantAbilityTemp: function (op) {
+      return 'until end of round, ' + targetText(op) + ' gains: ' + JSON.stringify(describeAbilityPublic(op.ability));
+    },
+    attackBonus: function (op) {
+      const parts = [];
+      if (op.amount) parts.push('this unit gets +' + op.amount + '/+0 for this attack');
+      if (op.defenderDelta) parts.push('the defender gets ' + op.defenderDelta + '/+0 for this attack');
+      return parts.join(' and ') || 'modify this attack';
+    },
+    exhaustFriendlyForBonus: function (op) {
+      return 'you may exhaust ' + describeTarget(op.target) + ' — if you do, this unit gets +' + op.amount + '/+0 for this attack';
+    },
+    collectBountiesOf: function (op) { return 'collect the bounties on ' + targetText(op); },
+    selfDefeatedToResource: function () { return 'put this card into play as a ready resource'; },
+    defeatCountUpgrades: function (op) { return 'defeat ' + targetText(op) + ', counting its upgrades'; },
+    repeat: function (op) {
+      const fn = opText[op.effect.op];
+      return 'for each counted upgrade, ' + (fn ? fn(op.effect) : op.effect.op);
+    },
+    millMatchBaseAspect: function () {
+      return 'discard the top card of your deck — if it shares an aspect with your base, take it into hand instead';
+    },
+    moveUpgrade: function () { return 'move an upgrade to another eligible unit with the same controller'; },
+    defeatUpgrade: function () { return 'defeat an upgrade'; },
+    upgradeFromDiscard: function () { return 'you may return an upgrade from your discard pile to your hand'; },
   };
+  // Late-bound alias so grantAbilityTemp can render nested abilities.
+  function describeAbilityPublic(ab) { return describeAbility(ab); }
 
   function describeEffectList(effects) {
     if (!effects || effects.length === 0) return 'do nothing';
@@ -166,6 +202,10 @@
     onCardPlayed: 'When you play another card',
     onUnitPlayed: 'When you play another unit',
     onDefeatUnit: 'When this unit defeats an enemy unit in combat',
+    bounty: 'Bounty — when this unit is defeated or captured, its opponent',
+    onSmuggle: 'When played using its smuggle cost',
+    onUpgradePlayed: 'When you play an upgrade',
+    whenCombatDamaged: 'When combat damage is dealt to this unit (and it survives)',
   };
 
   const conditionText = {
@@ -187,10 +227,21 @@
     milledNonUnit: function () { return 'if the discarded card was not a unit'; },
     saved: function (c) { return c.not ? 'if no target was chosen' : 'if a target was chosen'; },
     selfDamaged: function () { return 'if this unit is damaged'; },
+    selfUpgraded: function () { return 'while this unit has an upgrade'; },
+    controlUnitWithAspect: function (c) { return 'if you control another ' + (SB.names.aspects[c.aspect] || c.aspect) + ' unit'; },
+    bountyUnitUnique: function () { return 'if the defeated unit was a champion'; },
+    defenderHasBounty: function () { return 'if the defender carries a bounty'; },
     controlMoreUnitsThanOpponent: function () { return 'if you control more units than the opponent'; },
   };
 
   function describeAbility(ab) {
+    if (ab.trigger === 'combatAura') {
+      const g = ab.grant || {};
+      const parts = [];
+      if (g.power || g.hp) parts.push('gets +' + (g.power || 0) + '/+' + (g.hp || 0));
+      (g.keywords || []).forEach(function (kw) { parts.push('gains ' + (SB.names.keywords[kw.k] || kw.k)); });
+      return 'While attacking an enemy unit, each ' + scopeNoun(ab.scope) + ' ' + parts.join(' and ') + '.';
+    }
     if (ab.trigger === 'combatConstant') {
       // Keep in step with combatMods in engine.js.
       const g = ab.grant || {};
@@ -246,6 +297,10 @@
   function describeKeyword(kw) {
     const name = SB.names.keywords[kw.k];
     if (!name) throw new Error('no display name for keyword ' + kw.k);
+    if (kw.k === 'smuggle') {
+      const asp = (kw.aspects || []).map(function (a) { return SB.names.aspects[a] || a; }).join(', ');
+      return name + ' [' + kw.cost + (asp ? ', ' + asp : '') + ']';
+    }
     return kw.n != null ? name + ' ' + kw.n : name;
   }
 
