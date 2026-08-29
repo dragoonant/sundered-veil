@@ -15,3 +15,5 @@ missing mechanic):
 - Multi-unit "give X to up to N distinct units" effects granted through repeated
   single-target picks can, for one card (Luminous-Beings analogue), pick the same
   unit twice.
+- Abilities lent to another attacker by a support-style unit last until end of
+  round rather than only for that one attack.

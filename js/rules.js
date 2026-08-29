@@ -63,7 +63,7 @@
 
   SB.unitPower = function (state, unit) {
     const def = SB.unitDef(unit);
-    let p = def.power + unit.temp.power + unit.experience;
+    let p = def.power + unit.temp.power + unit.experience + (unit.advantage || 0);
     upgradeDefs(unit).forEach(function (u) { p += upgradeStats(u).power; });
     if (SB.hasKeyword(state, unit, 'grit')) p += unit.damage;
     return Math.max(0, p);

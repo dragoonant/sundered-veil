@@ -19,6 +19,7 @@
       bounty: 'Bounty', smuggle: 'Smuggle', exploit: 'Exploit',
       piloting: 'Piloting', coordinate: 'Coordinate', plot: 'Plot',
       unkillableThisRound: 'Deathless (this round)',
+      support: 'Support',
     },
     decks: {},     // deckId -> display name
     ui: {

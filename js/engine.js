@@ -729,6 +729,32 @@
   }
 
   SB.queueSteps = SB.queueSteps || {};
+  SB.queueSteps.readyTax = {
+    actions: function (state, itemStep) {
+      const u = SB.findUnit(state, itemStep.uid);
+      if (!u || u.exhausted) return null;
+      const acts = [{ type: 'readyTax', player: itemStep.player, pay: false }];
+      if (SB.readyResources(state, itemStep.player) >= itemStep.amount) {
+        acts.push({ type: 'readyTax', player: itemStep.player, pay: true });
+      }
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      const u = SB.findUnit(state, itemStep.uid);
+      if (!u) return;
+      if (action.pay) {
+        const res = state.players[itemStep.player].resources;
+        let left = itemStep.amount;
+        for (let i = 0; i < res.length && left > 0; i++) {
+          if (!res[i].exhausted) { res[i].exhausted = true; left--; }
+        }
+        state.log.push({ type: 'resourcesSpent', player: itemStep.player, amount: itemStep.amount });
+      } else {
+        u.exhausted = true;
+        state.log.push({ type: 'exhausted', uid: u.uid });
+      }
+    },
+  };
   SB.queueSteps.exploitPick = {
     actions: function (state, itemStep) {
       const acts = [];
@@ -792,12 +818,31 @@
       if (item.step === 'combatDamage') {
         state.queue.shift();
         const hadDefender = item.target.kind === 'unit' ? item.target.uid : null;
+        const baseBefore = item.target.kind === 'base' ? state.players[item.target.player].base.damage : null;
         resolveCombatDamage(state, item);
         const defDefeated = hadDefender != null && !SB.findUnit(state, hadDefender);
-        // "After this unit attacks" triggers, if the attacker survived.
+        const defUnit = hadDefender != null ? SB.findUnit(state, hadDefender) : null;
+        const baseDealt = baseBefore != null ? state.players[item.target.player].base.damage - baseBefore : 0;
         const atk = SB.findUnit(state, item.attackerUid);
-        if (atk) SB.fireTriggers(state, 'onAttackEnds', atk,
-          { sourceUid: atk.uid, attackTarget: item.target, defenderDefeated: defDefeated });
+        const endCtx = { attackTarget: item.target, defenderDefeated: defDefeated,
+          baseDamageDealt: baseDealt,
+          defenderDamagedNonLeader: !!(defUnit && defUnit.damage > 0 && SB.card(defUnit.cardId).type !== 'leader') };
+        // Advantage tokens expire when their carrier's attack or defense ends.
+        if (atk && atk.advantage) { atk.advantage = 0; state.log.push({ type: 'advantageExpired', uid: atk.uid }); }
+        if (defUnit && defUnit.advantage) { defUnit.advantage = 0; state.log.push({ type: 'advantageExpired', uid: defUnit.uid }); }
+        // "After this unit attacks" triggers, if the attacker survived.
+        if (atk) SB.fireTriggers(state, 'onAttackEnds', atk, Object.assign({ sourceUid: atk.uid }, endCtx));
+        // "When a friendly unit's attack ends" observers (leader + units).
+        if (atk) {
+          fireLeaderTrigger(state, atk.owner, 'onFriendlyAttackEnds',
+            Object.assign({ attackEndedUid: atk.uid }, endCtx));
+          SB.allUnits(state, atk.owner).forEach(function (obs) {
+            if (obs.uid === atk.uid) return;
+            SB.fireTriggers(state, 'onFriendlyAttackEnds', obs,
+              Object.assign({ sourceUid: obs.uid, attackEndedUid: atk.uid }, endCtx));
+          });
+          // Deployed leader units also observe (they are units, covered above).
+        }
         continue;
       }
       if (item.step === 'effect') {
@@ -878,6 +923,10 @@
   function startRegroup(state) {
     state.phase = 'regroup';
     state.log.push({ type: 'regroup', round: state.round });
+    // "When the regroup phase starts" unit triggers.
+    SB.allUnits(state).slice().forEach(function (u) {
+      SB.fireTriggers(state, 'onRegroup', u, { sourceUid: u.uid });
+    });
     // "At the start of the regroup phase, defeat it" markers (temporary summons).
     SB.allUnits(state).filter(function (u) { return u.defeatAtRegroup; }).forEach(function (u) {
       SB.defeatUnit(state, u, {});
@@ -930,11 +979,26 @@
     state.baseDamagersThisPhase = [];
     SB.allUnits(state).forEach(function (u) {
       delete u.keywordsSuppressed;
+      const wasExhausted = u.exhausted;
       if (u.stunned) { delete u.stunned; } // stunned units miss this ready step
       else if (SB.isJailed(state, u)) { /* jailed units stay exhausted */ }
-      else u.exhausted = false;
+      else {
+        u.exhausted = false;
+        // "When this unit readies: pay N or exhaust it" taxes from upgrades.
+        if (wasExhausted) {
+          const sources = [SB.unitDef(u)].concat(u.upgrades.map(function (i2) { return SB.card(i2.cardId); }));
+          sources.forEach(function (src) {
+            (src.abilities || []).forEach(function (ab) {
+              if (ab.trigger !== 'onReadyTax') return;
+              state.queue.push({ step: 'readyTax', player: u.owner, uid: u.uid, amount: ab.amount || 3 });
+            });
+          });
+        }
+      }
       u.temp = { power: 0, hp: 0 };
       delete u.tempKeywords;
+      delete u.tempAbilities;
+      delete u.triggerUsedRound;
     });
     // A unit kept alive past lethal by a this-round effect dies when it expires.
     SB.allUnits(state).slice().forEach(function (u) {

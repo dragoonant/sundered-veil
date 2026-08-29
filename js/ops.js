@@ -30,7 +30,11 @@
     const grants = [];
     SB.allUnits(state).forEach(function (src) {
       const def = SB.unitDef(src);
-      (def.abilities || []).forEach(function (ab) {
+      let abilities = (def.abilities || []).slice();
+      src.upgrades.forEach(function (inst) {
+        abilities = abilities.concat(SB.card(inst.cardId).abilities || []);
+      });
+      abilities.forEach(function (ab) {
         if (ab.trigger !== 'constant' || !ab.grant) return;
         if (ab.condition && !SB.checkCondition(state, src.owner, ab.condition, { sourceUid: src.uid })) return;
         const sel = ab.scope || { self: true };
@@ -60,6 +64,13 @@
       return n;
     }
     if (kind === 'pilotsOnSelf') return SB.pilotCount(state, unit);
+    if (kind === 'upgradesOnOtherFriendlies') {
+      let n = 0;
+      SB.allUnits(state, unit.owner).forEach(function (u) {
+        if (u.uid !== unit.uid) n += u.upgrades.length;
+      });
+      return n;
+    }
     return 0;
   }
 
@@ -148,6 +159,9 @@
     if (item.op.grantSaboteurForAttack) {
       u.tempKeywords = u.tempKeywords || [];
       u.tempKeywords.push('saboteur');
+    }
+    if (item.op.grantTempAbility) {
+      u.tempAbilities = (u.tempAbilities || []).concat([item.op.grantTempAbility]);
     }
     state.queue.unshift({ step: 'attackTargetChoice', player: item.controller, uid: u.uid,
       bonusPower: bonus, firstStrike: !!item.op.firstStrike, ready: !!item.op.ready,
@@ -765,6 +779,154 @@
     },
   };
 
+  // Advantage tokens: +1/+0 each, defeated when the carrier's attack/defense ends.
+  O.giveAdvantage = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (!u) return;
+    const n = item.op.amountRef ? SB.resolveAmount(state, item, target) : (item.op.amount || 1);
+    if (n <= 0) return;
+    u.advantage = (u.advantage || 0) + n;
+    state.log.push({ type: 'advantage', uid: u.uid, amount: n, sound: 'buff' });
+  };
+  O.advantageAll = function (state, item) {
+    const cands = SB.selectorCandidates(state, item.controller, item.op.scope, item.ctx || {});
+    cands.forEach(function (c) {
+      const u = SB.findUnit(state, c.uid);
+      if (u) { u.advantage = (u.advantage || 0) + (item.op.amount || 1); state.log.push({ type: 'advantage', uid: u.uid, amount: item.op.amount || 1, sound: 'buff' }); }
+    });
+  };
+
+  // Support: attack with another friendly ready unit, lending it this unit's
+  // on-attack abilities for the round (see DEVIATIONS.md).
+  O.supportAttack = function (state, item) {
+    const src = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
+    if (!src) return;
+    state.queue.unshift({ step: 'supportPick', player: item.controller, srcUid: src.uid });
+  };
+  SB.queueSteps.supportPick = {
+    actions: function (state, itemStep) {
+      const acts = [{ type: 'supportChoose', player: itemStep.player, uid: null }];
+      SB.allUnits(state, itemStep.player).forEach(function (u) {
+        if (u.uid === itemStep.srcUid || u.exhausted) return;
+        if (SB.attackTargets(state, u).length === 0) return;
+        acts.push({ type: 'supportChoose', player: itemStep.player, uid: u.uid });
+      });
+      return acts.length > 1 ? acts : null;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.uid == null) return;
+      const u = SB.findUnit(state, action.uid);
+      const src = SB.findUnit(state, itemStep.srcUid);
+      if (!u || !src) return;
+      const lent = (SB.unitDef(src).abilities || []).filter(function (ab) {
+        return ['onAttack', 'onAttackEnds', 'combatConstant'].indexOf(ab.trigger) >= 0;
+      });
+      if (lent.length) {
+        u.tempAbilities = (u.tempAbilities || []).concat(lent);
+        state.log.push({ type: 'supported', uid: u.uid, by: src.uid, sound: 'buff' });
+      }
+      state.queue.unshift({ step: 'attackTargetChoice', player: itemStep.player, uid: u.uid,
+        bonusPower: 0, firstStrike: false, ready: false, optional: false });
+    },
+  };
+
+  // Token doubling (defeat this unit to double a token creation).
+  O.createToken = (function (orig) {
+    return function (state, item) {
+      const doubler = SB.allUnits(state, item.controller).find(function (u) {
+        return (SB.unitDef(u).staticFlags || []).indexOf('tokenDoubler') >= 0;
+      });
+      if (doubler && !item.op._resolved) {
+        state.queue.unshift({ step: 'tokenDoubleOffer', player: item.controller,
+          doublerUid: doubler.uid, op: item.op, controller: item.controller, ctx: item.ctx });
+        return;
+      }
+      orig(state, item);
+    };
+  })(O.createToken);
+  SB.queueSteps.tokenDoubleOffer = {
+    actions: function (state, itemStep) {
+      if (!SB.findUnit(state, itemStep.doublerUid)) return null;
+      return [
+        { type: 'tokenDouble', player: itemStep.player, use: true },
+        { type: 'tokenDouble', player: itemStep.player, use: false },
+      ];
+    },
+    apply: function (state, itemStep, action) {
+      const op = Object.assign({}, itemStep.op, { _resolved: true });
+      if (action.use) {
+        const d = SB.findUnit(state, itemStep.doublerUid);
+        if (d) SB.defeatUnit(state, d, {});
+        op.amount = (op.amount || 1) * 2;
+      }
+      state.queue.unshift({ step: 'effect', controller: itemStep.controller, op: op, ctx: itemStep.ctx || {} });
+    },
+  };
+
+  // Capture a just-defeated friendly unit back from the discard pile.
+  O.captureFromDiscard = function (state, item) {
+    const src = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
+    const uid = item.ctx && item.ctx.defeatedUid;
+    if (!src || uid == null) return;
+    const owner = state.players[item.controller];
+    const i = owner.discard.findIndex(function (inst) { return inst.uid === uid; });
+    if (i < 0) return;
+    const inst = owner.discard.splice(i, 1)[0];
+    src.captured = src.captured || [];
+    src.captured.push({ uid: inst.uid, cardId: inst.cardId, owner: item.controller, upgrades: [] });
+    state.log.push({ type: 'captured', uid: inst.uid, cardId: inst.cardId, by: src.uid, sound: 'capture' });
+  };
+
+  // Defeat the damaged (surviving, non-leader) defender of the just-ended attack.
+  O.defeatDamagedDefender = function (state, item) {
+    const t = item.ctx && item.ctx.attackTarget;
+    const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+    if (!u || u.damage === 0) return;
+    if (SB.card(u.cardId).type === 'leader') return;
+    SB.defeatUnit(state, u, {});
+  };
+
+  // Defeat all upgrades on the defending unit.
+  O.defeatDefenderUpgrades = function (state, item) {
+    const t = item.ctx && item.ctx.attackTarget;
+    const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+    if (!u) return;
+    const owner = state.players[u.owner];
+    u.upgrades.slice().forEach(function (inst) {
+      u.upgrades.splice(u.upgrades.indexOf(inst), 1);
+      if (inst.leaderPilot) {
+        const lp = state.players[u.owner].leader;
+        lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+      } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
+    });
+    state.log.push({ type: 'upgradesDefeated', uid: u.uid, sound: 'destroy' });
+    if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
+  };
+
+  // Heal every friendly unit fully.
+  O.healAllFriendly = function (state, item) {
+    SB.allUnits(state, item.controller).forEach(function (u) {
+      if (u.damage > 0) {
+        state.log.push({ type: 'unitHeal', uid: u.uid, amount: u.damage, sound: 'heal' });
+        u.damage = 0;
+      }
+    });
+  };
+
+  // Return all OTHER upgrades on the bearer to their owners' hands.
+  O.returnOtherUpgradesOnBearer = function (state, item) {
+    const bearer = SB.findUnit(state, item.ctx && item.ctx.bearerUid != null ? item.ctx.bearerUid : item.ctx.sourceUid);
+    if (!bearer) return;
+    const selfCardId = item.ctx && item.ctx.upgradeCardId;
+    bearer.upgrades.slice().forEach(function (inst) {
+      if (inst.cardId === selfCardId) return;
+      if (inst.leaderPilot) return;
+      bearer.upgrades.splice(bearer.upgrades.indexOf(inst), 1);
+      state.players[bearer.owner].hand.push(inst);
+      state.log.push({ type: 'returnedToHand', uid: bearer.uid, cardId: inst.cardId });
+    });
+  };
+
   // Disclose: reveal hand cards covering the aspect icons (public log; simplified
   // to an all-at-once reveal — the gating happened via condition canDisclose).
   O.discloseReveal = function (state, item) {
@@ -993,7 +1155,10 @@
       const p = state.players[itemStep.player];
       const inst = p.hand.splice(action.handIndex, 1)[0];
       p.discard.push(inst);
-      if (itemStep.ctx) SB.efx(state, itemStep.ctx).lastDiscardedType = SB.card(inst.cardId).type;
+      if (itemStep.ctx) {
+        SB.efx(state, itemStep.ctx).lastDiscardedType = SB.card(inst.cardId).type;
+        SB.efx(state, itemStep.ctx).lastDiscardedCost = SB.card(inst.cardId).cost;
+      }
       state.log.push({ type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
       if (SB.fireLeaderTrigger) SB.fireLeaderTrigger(state, itemStep.player, 'onRevealOrDiscard', {});
       SB.allUnits(state, itemStep.player).forEach(function (u) {
@@ -1219,6 +1384,7 @@
         const f = itemStep.filter;
         if (f.type && c.type !== f.type) return;
         if (f.trait && (c.traits || []).indexOf(f.trait) < 0) return;
+        if (f.nonUnique && c.unique) return;
         if (f.defeatedThisPhase && !(state.defeatedThisPhase || []).some(function (d) { return d.uid === inst.uid; })) return;
         acts.push({ type: 'takeFromDiscard', player: itemStep.player, index: i });
       });

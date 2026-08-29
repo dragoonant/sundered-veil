@@ -42,6 +42,7 @@
     if (sel.sharesTraitWithFriendlyLeader) s += ' that shares a kind with a friendly leader';
     if (sel.sameArenaAsSaved) s += ' in the same arena as the chosen unit';
     if (sel.powerLteSaved) s += ' with power no greater than the chosen unit’s';
+    if (sel.costGtLastDiscarded) s += ' that costs more than the discarded card';
     if (sel.damaged) s += ' that is damaged';       // engine: selectorCandidates .damaged
     return s;
   }
@@ -65,6 +66,8 @@
     if (op.amountRef === 'targetRemHpMinus1') return '1 less than its remaining HP in';
     if (/^stored:/.test(op.amountRef)) return 'that much';
     if (op.amountRef === 'healedAmount') return 'that much';
+    if (op.amountRef === 'baseDamageDealt') return 'that much';
+    if (op.amountRef === 'otherFriendlyCount') return '1 for each other friendly unit in';
     if (op.amountRef === 'distinctFriendlyAspects') return '1 for each different aspect among your units in';
     return String(op.amount);
   }
@@ -140,6 +143,7 @@
       if (op.bonusIfOddCostsDiffer) perks.push('if the revealed card and that unit have different odd costs, it gets +' + op.bonusIfOddCostsDiffer + '/+0');
       if (op.bonusIfTrait) perks.push('a ' + (SB.names.traits[op.bonusIfTrait.trait] || op.bonusIfTrait.trait) + ' unit gets +' + op.bonusIfTrait.amount + '/+0 for this attack');
       if (op.grantSaboteurForAttack) perks.push('it gains Saboteur for this round');
+      if (op.grantTempAbility) perks.push('for this round it gains: ' + JSON.stringify(describeAbilityLate(op.grantTempAbility)));
       if (perks.length) s += ' — ' + perks.join(' and ');
       return s;
     },
@@ -255,6 +259,17 @@
     bottomUnitFromDiscardPower: function () { return 'put a unit from your discard pile on the bottom of your deck'; },
     exchangeControl: function () { return 'exchange control of a chosen friendly and enemy non-leader unit — whoever receives the cheaper unit creates credits equal to the cost difference'; },
     oppChoosesUnitDamage: function (op) { return 'the opponent chooses one of their ' + (op.arena ? op.arena + ' ' : '') + 'units — you may deal ' + op.amount + ' damage to it'; },
+    giveAdvantage: function (op) {
+      const n2 = op.amountRef ? amountText(op) : String(op.amount || 1);
+      return 'give ' + n2 + ' advantage tokens to ' + targetText(op);
+    },
+    advantageAll: function (op) { return 'give an advantage token to each ' + scopeNoun(op.scope); },
+    supportAttack: function () { return 'you may attack with another friendly unit — it borrows this unit’s attack abilities'; },
+    captureFromDiscard: function () { return 'this unit captures the defeated card from your discard pile'; },
+    defeatDamagedDefender: function () { return 'defeat the damaged non-leader defender'; },
+    defeatDefenderUpgrades: function () { return 'defeat all upgrades on the defending unit'; },
+    healAllFriendly: function () { return 'heal all damage from each friendly unit'; },
+    returnOtherUpgradesOnBearer: function () { return 'return the other upgrades on this unit to their owners’ hands'; },
     auctionTop: function () { return 'choose a player: reveal the top card of their deck and they may play it for free — if they do, the other player creates credits equal to its cost'; },
     discardFromOpponentHandChoice: function () { return 'look at the opponent’s hand and discard a card from it'; },
     damagePerExploited: function () {
@@ -264,6 +279,7 @@
   // Late-bound alias so grantAbilityTemp can render nested abilities.
   function describeAbilityPublic(ab) { return describeAbility(ab); }
 
+  function describeAbilityLate(ab) { return describeAbility(ab); }
   function describeEffectList(effects) {
     if (!effects || effects.length === 0) return 'do nothing';
     return effects.map(function (op) {
@@ -313,6 +329,7 @@
     onRevealOrDiscard: 'When you reveal or discard cards from your hand',
     onFriendlyAttack: 'When another matching friendly unit attacks',
     onFriendlyDefeated: 'When another friendly unit is defeated',
+    onFriendlyAttackEnds: 'When a friendly unit’s attack ends',
   };
 
   const conditionText = {
@@ -328,6 +345,13 @@
       return 'if you control a ' + c.aspects.map(function (a) { return SB.names.aspects[a] || a; }).join(' or ') + ' unit';
     },
     canPay: function (c) { return 'if you can pay ' + c.n + ' resource' + (c.n === 1 ? '' : 's'); },
+    selfReady: function () { return 'while this unit is ready'; },
+    selfRemHpAtLeast: function (c) { return 'if this unit has ' + c.n + ' or more remaining HP'; },
+    controlArenaUnit: function (c) { return 'while you control a ' + c.arena + ' unit'; },
+    opponentControlsSpaceUnit: function () { return 'if the opponent controls a space unit'; },
+    defeatedByCombat: function () { return 'if defeated by combat damage'; },
+    dealtBaseDamage: function () { return 'if this attack damaged the base'; },
+    defenderDamagedNonLeader: function () { return 'if the defender survived with damage'; },
     defenderDefeated: function () { return 'if the defending unit was defeated'; },
     canDisclose: function (c) {
       return 'if you can reveal the required icons: ' +
@@ -365,6 +389,9 @@
   };
 
   function describeAbility(ab) {
+    if (ab.trigger === 'onReadyTax') {
+      return 'When this unit readies: pay ' + (ab.amount || 3) + ' resources or exhaust it.';
+    }
     if (ab.trigger === 'defenderAura') {
       return 'While this unit is defending, the attacker gets ' + ((ab.grant || {}).attackerPower || 0) + '/+0.';
     }
@@ -396,6 +423,7 @@
       if (g.power || g.hp) parts.push('gets +' + (g.power || 0) + '/+' + (g.hp || 0));
       if (g.dynamicPower === 'friendlyPilotsAndPilotUpgrades') parts.push('gets +1/+0 for each other friendly pilot unit or pilot upgrade');
       if (g.dynamicPower === 'pilotsOnSelf') parts.push('gets +1/+0 for each pilot on it');
+      if (g.dynamicPower === 'upgradesOnOtherFriendlies') parts.push('gets +1/+0 for each upgrade on other friendly units');
       if (g.traits) parts.push('gains the ' + g.traits.map(function (tr) { return SB.names.traits[tr] || tr; }).join(', ') + ' kind');
       (g.keywords || []).forEach(function (kw) {
         parts.push('gains ' + (SB.names.keywords[kw.k] || kw.k) + (kw.n != null ? ' ' + kw.n : ''));

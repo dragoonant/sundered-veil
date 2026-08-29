@@ -85,6 +85,10 @@
           const src = SB.findUnit(state, ctx.sourceUid);
           if (!src || SB.unitPower(state, u) >= SB.unitPower(state, src)) return;
         }
+        if (sel.costGtLastDiscarded) {
+          const c = SB.efx(state, ctx).lastDiscardedCost;
+          if (c == null || (SB.card(u.cardId).cost || 0) <= c) return;
+        }
         if (sel.damaged && u.damage === 0) return;
         if (sel.notSelf && u.uid === ctx.sourceUid) return;
         if (sel.aspect && (SB.card(u.cardId).aspects || []).indexOf(sel.aspect) < 0) return;
@@ -174,10 +178,11 @@
         state.log.push({ type: 'leaderReturned', player: unit.owner });
       } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
     });
-    SB.fireTriggers(state, 'whenDefeated', unit, ctx);
+    SB.fireTriggers(state, 'whenDefeated', unit, Object.assign({}, ctx, { sourceUid: unit.uid, combat: ctx && ctx.combat }));
     // "When a friendly unit is defeated" observers on the owner's other units.
     SB.allUnits(state, unit.owner).forEach(function (obs) {
-      SB.fireTriggers(state, 'onFriendlyDefeated', obs, { sourceUid: obs.uid, defeatedCardId: unit.cardId });
+      SB.fireTriggers(state, 'onFriendlyDefeated', obs,
+        { sourceUid: obs.uid, defeatedCardId: unit.cardId, defeatedUid: unit.uid });
     });
   };
 
@@ -214,12 +219,19 @@
         if (ab.playedTrait && (!ctx || !ctx.playedCardId ||
             (SB.card(ctx.playedCardId).traits || []).indexOf(ab.playedTrait) < 0)) return;
         if (ab.playedUnique && (!ctx || !ctx.playedCardId || !SB.card(ctx.playedCardId).unique)) return;
+        if (ab.oncePerRoundTrigger) {
+          if (unit.triggerUsedRound === state.round) return;
+          unit.triggerUsedRound = state.round;
+        }
         SB.queueEffects(state, unit.owner, ab.effects, {
           sourceUid: unit.uid, cardId: unit.cardId, condition: ab.condition,
           playedCardId: ctx && ctx.playedCardId, bearerUid: ctx && ctx.bearerUid,
           attackerUid: ctx && ctx.attackerUid, attackTarget: ctx && ctx.attackTarget,
           damagedUid: ctx && ctx.damagedUid, paidCost: ctx && ctx.paidCost,
           defenderDefeated: ctx && ctx.defenderDefeated, healedAmount: ctx && ctx.healedAmount,
+          baseDamageDealt: ctx && ctx.baseDamageDealt, attackEndedUid: ctx && ctx.attackEndedUid,
+          defeatedUid: ctx && ctx.defeatedUid, playedUid: ctx && ctx.playedUid,
+          combat: ctx && ctx.combat, defenderDamagedNonLeader: ctx && ctx.defenderDamagedNonLeader,
         });
       });
     });
@@ -260,6 +272,10 @@
       const arena = SB.arenaOf(state, u);
       return state[arena].filter(function (x) { return x.owner === item.controller; }).length;
     }
+    if (op.amountRef === 'otherFriendlyCount') {
+      return Math.max(0, SB.allUnits(state, item.controller).length - 1);
+    }
+    if (op.amountRef === 'baseDamageDealt') return (item.ctx && item.ctx.baseDamageDealt) || 0;
     if (op.amountRef === 'distinctFriendlyAspects') {
       const set = {};
       SB.allUnits(state, item.controller).forEach(function (u) {
@@ -374,6 +390,24 @@
         const has = SB.efx(state, ctx)[cond.name] != null;
         return cond.not ? !has : has;
       }
+      case 'selfReady': {
+        const self = SB.findUnit(state, ctx.sourceUid);
+        return !!self && !self.exhausted;
+      }
+      case 'selfRemHpAtLeast': {
+        const self = SB.findUnit(state, ctx.sourceUid);
+        return !!self && SB.unitRemainingHp(state, self) >= cond.n;
+      }
+      case 'controlArenaUnit':
+        return state[cond.arena].some(function (u) { return u.owner === controller; });
+      case 'opponentControlsSpaceUnit':
+        return state.space.some(function (u) { return u.owner !== controller; });
+      case 'defeatedByCombat':
+        return !!ctx.combat;
+      case 'dealtBaseDamage':
+        return (ctx.baseDamageDealt || 0) > 0;
+      case 'defenderDamagedNonLeader':
+        return !!ctx.defenderDamagedNonLeader;
       case 'controlUnitWithAspect2':
         return SB.allUnits(state, controller).some(function (u) {
           if (u.uid === ctx.sourceUid) return false;
@@ -637,9 +671,16 @@
       // Reuse a target chosen by an earlier op of this invocation.
       if (op.useTarget) {
         state.queue.shift();
-        const t = op.useTarget === '@defender'
-          ? (item.ctx && item.ctx.attackTarget && item.ctx.attackTarget.kind === 'unit' ? item.ctx.attackTarget : null)
-          : SB.efx(state, item.ctx)[op.useTarget];
+        let t;
+        if (op.useTarget === '@defender') {
+          t = item.ctx && item.ctx.attackTarget && item.ctx.attackTarget.kind === 'unit' ? item.ctx.attackTarget : null;
+        } else if (op.useTarget === '@attackEnded') {
+          t = item.ctx && item.ctx.attackEndedUid != null ? { kind: 'unit', uid: item.ctx.attackEndedUid } : null;
+        } else if (op.useTarget === '@played') {
+          t = item.ctx && item.ctx.playedUid != null ? { kind: 'unit', uid: item.ctx.playedUid } : null;
+        } else {
+          t = SB.efx(state, item.ctx)[op.useTarget];
+        }
         if (!t) {
           state.log.push({ type: 'fizzle', why: 'noSavedTarget', cardId: item.ctx && item.ctx.cardId, fizzled: true });
           continue;
