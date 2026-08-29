@@ -286,11 +286,60 @@
     $('my-deck-count').textContent = String(s.players[UI.humanSeat].deck.length);
   }
 
+  // Action types already given spatial affordances elsewhere in the UI.
+  const SPATIAL = { playCard: 1, attack: 1, pass: 1, claimInitiative: 1, deployLeader: 1,
+    leaderAction: 1, mulligan: 1, resourceCard: 1, choose: 1 };
+
+  function actionLabel(s, a) {
+    const cardName = function (id) { return SB.names.card(id); };
+    const unitName = function (uid) {
+      const u2 = SB.findUnit(s, uid);
+      return u2 ? cardName(u2.cardId) : '?';
+    };
+    switch (a.type) {
+      case 'discardCard': return 'Discard: ' + cardName(s.players[a.targetPlayer != null ? a.targetPlayer : a.player].hand[a.handIndex].cardId);
+      case 'playHandCard': return a.handIndex === -1 ? SB.names.ui.decline : 'Play: ' + cardName(a.cardId);
+      case 'searchTake': return a.deckIndex === -1 ? SB.names.ui.decline : 'Take: ' + cardName(s.players[a.player].deck[a.deckIndex].cardId);
+      case 'binary': return a.pick === 'a' ? 'Option 1' : 'Option 2';
+      case 'effectAttack': return a.target ? (a.target.kind === 'base' ? 'Attack the base' : 'Attack ' + unitName(a.target.uid)) : SB.names.ui.decline;
+      case 'exploitUnit': return 'Sacrifice: ' + unitName(a.uid);
+      case 'peekAct': return a.mode === 'play' ? 'Play: ' + cardName(a.cardId) : 'Top card: ' + a.mode;
+      case 'indirectTo': case 'dividedTo': return a.target.kind === 'base' ? 'Assign 1 to base' : 'Assign 1 to ' + unitName(a.target.uid);
+      case 'mayReady': return a.uid == null ? SB.names.ui.decline : 'Ready: ' + unitName(a.uid);
+      case 'takeFromDiscard': return a.index === -1 ? SB.names.ui.decline : 'Return: ' + cardName(s.players[a.player].discard[a.index].cardId);
+      case 'smuggle': return 'Smuggle: ' + cardName(a.cardId);
+      case 'plotPlay': return a.resourceIndex === -1 ? SB.names.ui.decline : 'Scheme: ' + cardName(a.cardId);
+      case 'plotAttach': return 'Attach to: ' + unitName(a.uid);
+      case 'leaderTrigger': return a.use ? SB.names.ui.leaderAbility : SB.names.ui.decline;
+      case 'massExhaust': case 'budgetExhaust': return a.uid == null ? 'Stop' : 'Exhaust: ' + unitName(a.uid);
+      case 'massAttackChoose': case 'supportChoose': return a.uid == null ? 'Stop' : 'Attack with: ' + unitName(a.uid);
+      case 'defeatOwn': return 'Defeat: ' + unitName(a.uid);
+      case 'swapPick': return 'Trade away: ' + unitName(a.uid);
+      case 'captureBudget': return a.uid == null ? 'Stop' : 'Capture: ' + unitName(a.uid);
+      case 'oppOffer': return 'Offer: ' + unitName(a.uid);
+      case 'tokenDouble': return a.use ? 'Sacrifice to double' : 'Keep the unit';
+      case 'readyTax': return a.pay ? 'Pay to stay ready' : 'Stay exhausted';
+      case 'payXp': return a.pay ? 'Pay 1 (gain a token)' : 'Stop paying';
+      case 'bottomCard': return 'Bottom: ' + cardName(s.players[a.player].hand[a.handIndex].cardId);
+      case 'bottomDiscard': return a.index === -1 ? 'Done' : 'Bottom: ' + cardName(s.players[a.player].discard[a.index].cardId);
+      case 'bottomUnit': return 'Bottom: ' + cardName(s.players[a.player].discard[a.index].cardId);
+      case 'arrange2': return 'Order: ' + a.mode;
+      case 'moveUpgrade': return a.from == null ? SB.names.ui.decline : 'Move upgrade to ' + unitName(a.to);
+      case 'defeatUpgrade': return 'Defeat upgrade on ' + unitName(a.uid);
+      case 'auctionPick': return 'Reveal ' + (a.who === UI.humanSeat ? 'your' : 'their') + ' deck';
+      case 'auctionPlay': return a.play ? 'Play it free' : SB.names.ui.decline;
+      case 'supportPick': return 'Support';
+      case 'baseEpic': return 'Base epic action';
+      default: return a.type;
+    }
+  }
+
   function renderChoices(s, acts) {
-    // Non-spatial choices (e.g. optional effects with only a decline) get a bar.
+    // Non-spatial choices get a generic button bar so every queue step is playable.
     const bar = $('choice-bar');
     bar.textContent = '';
-    if (s.queue.length > 0 && s.queue[0].candidates && whoActs(s) === UI.humanSeat) {
+    const mineToAct = whoActs(s) === UI.humanSeat;
+    if (mineToAct && s.queue.length > 0 && s.queue[0].candidates) {
       bar.appendChild(el('span', null, SB.names.ui.chooseTarget));
       const decline = acts.find(function (a) { return a.type === 'choose' && a.index === -1; });
       if (decline) {
@@ -298,6 +347,16 @@
         b.onclick = function () { UI.doAction(decline); };
         bar.appendChild(b);
       }
+      bar.style.display = '';
+      return;
+    }
+    const generic = mineToAct ? acts.filter(function (a) { return !SPATIAL[a.type]; }) : [];
+    if (generic.length > 0) {
+      generic.slice(0, 24).forEach(function (a) {
+        const b = el('button', 'action-btn', actionLabel(s, a));
+        b.onclick = function () { UI.doAction(a); };
+        bar.appendChild(b);
+      });
       bar.style.display = '';
     } else {
       bar.style.display = 'none';
