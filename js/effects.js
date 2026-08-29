@@ -40,6 +40,25 @@
         if (sel.anyTrait && !sel.anyTrait.some(function (tr) { return SB.unitTraits(state, u).indexOf(tr) >= 0; })) return;
         if (sel.hasExperience && !(u.experience > 0)) return;
         if (sel.hasSentinel && !SB.hasKeyword(state, u, 'sentinel')) return;
+        if (sel.sharesTraitWithFriendlyLeader) {
+          const traits = SB.unitTraits(state, u);
+          const lp = state.players[controller].leader;
+          const ok = SB.allUnits(state, controller).some(function (l) {
+            if (SB.card(l.cardId).type !== 'leader') return false;
+            return SB.unitTraits(state, l).some(function (tr) { return traits.indexOf(tr) >= 0; });
+          }) || (SB.card(lp.cardId).traits || []).some(function (tr) { return traits.indexOf(tr) >= 0; });
+          if (!ok) return;
+        }
+        if (sel.sameArenaAsSaved) {
+          const t = SB.efx(state, ctx)[sel.sameArenaAsSaved];
+          const su = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+          if (!su || SB.arenaOf(state, u) !== SB.arenaOf(state, su)) return;
+        }
+        if (sel.powerLteSaved) {
+          const t = SB.efx(state, ctx)[sel.powerLteSaved];
+          const su = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+          if (!su || SB.unitPower(state, u) > SB.unitPower(state, su)) return;
+        }
         if (sel.remHpLessThanSourceRemHp) {
           const src = SB.findUnit(state, ctx.sourceUid);
           if (!src || SB.unitRemainingHp(state, u) >= SB.unitRemainingHp(state, src)) return;
@@ -156,6 +175,10 @@
       } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
     });
     SB.fireTriggers(state, 'whenDefeated', unit, ctx);
+    // "When a friendly unit is defeated" observers on the owner's other units.
+    SB.allUnits(state, unit.owner).forEach(function (obs) {
+      SB.fireTriggers(state, 'onFriendlyDefeated', obs, { sourceUid: obs.uid, defeatedCardId: unit.cardId });
+    });
   };
 
   SB.drawCards = function (state, playerIdx, n) {
@@ -195,7 +218,8 @@
           sourceUid: unit.uid, cardId: unit.cardId, condition: ab.condition,
           playedCardId: ctx && ctx.playedCardId, bearerUid: ctx && ctx.bearerUid,
           attackerUid: ctx && ctx.attackerUid, attackTarget: ctx && ctx.attackTarget,
-          damagedUid: ctx && ctx.damagedUid,
+          damagedUid: ctx && ctx.damagedUid, paidCost: ctx && ctx.paidCost,
+          defenderDefeated: ctx && ctx.defenderDefeated, healedAmount: ctx && ctx.healedAmount,
         });
       });
     });
@@ -236,6 +260,14 @@
       const arena = SB.arenaOf(state, u);
       return state[arena].filter(function (x) { return x.owner === item.controller; }).length;
     }
+    if (op.amountRef === 'distinctFriendlyAspects') {
+      const set = {};
+      SB.allUnits(state, item.controller).forEach(function (u) {
+        (SB.card(u.cardId).aspects || []).forEach(function (a) { set[a] = true; });
+      });
+      return Object.keys(set).length;
+    }
+    if (op.amountRef === 'healedAmount') return (item.ctx && item.ctx.healedAmount) || 0;
     if (op.amountRef === 'powerOfSource') {
       const src = SB.findUnit(state, item.ctx && item.ctx.sourceUid);
       return src ? SB.unitPower(state, src) : 0;
@@ -342,6 +374,19 @@
         const has = SB.efx(state, ctx)[cond.name] != null;
         return cond.not ? !has : has;
       }
+      case 'controlUnitWithAspect2':
+        return SB.allUnits(state, controller).some(function (u) {
+          if (u.uid === ctx.sourceUid) return false;
+          return (SB.card(u.cardId).aspects || []).some(function (a) {
+            return cond.aspects.indexOf(a) >= 0;
+          });
+        });
+      case 'canPay':
+        return SB.readyResources(state, controller) >= cond.n;
+      case 'paidZero':
+        return ctx.paidCost === 0;
+      case 'defenderDefeated':
+        return !!ctx.defenderDefeated;
       case 'controlLeaderUnit':
         return SB.allUnits(state, controller).some(function (u) {
           return SB.card(u.cardId).type === 'leader' ||
@@ -460,7 +505,7 @@
           u.damage -= healed;
           if (healed > 0) {
             state.log.push({ type: 'unitHeal', uid: u.uid, amount: healed, sound: 'heal' });
-            SB.fireTriggers(state, 'whenHealed', u, { sourceUid: u.uid });
+            SB.fireTriggers(state, 'whenHealed', u, { sourceUid: u.uid, healedAmount: healed });
           }
         }
       }
@@ -500,7 +545,8 @@
     },
     experience: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
-      if (u) { u.experience += (item.op.amount || 1); state.log.push({ type: 'experience', uid: u.uid, sound: 'buff' }); }
+      const amt = item.op.amountRef ? SB.resolveAmount(state, item, target) : (item.op.amount || 1);
+      if (u && amt > 0) { u.experience += amt; state.log.push({ type: 'experience', uid: u.uid, amount: amt, sound: 'buff' }); }
     },
     buffTemp: function (state, item, target) {
       // Lasts for the round; cleared in regroup. A negative HP change can defeat.

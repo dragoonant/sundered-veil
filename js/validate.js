@@ -11,7 +11,8 @@
     'combatConstant', 'onDefeatUnit', 'bounty', 'onSmuggle', 'onUpgradePlayed',
     'whenCombatDamaged', 'combatAura', 'onOpponentDraw', 'whenHealed',
     'onIndirectUnitDamage', 'onDeployPilot', 'onPlayAsPilot', 'onNonCombatDamage',
-    'onForceUnitAttack', 'onRevealOrDiscard', 'onFriendlyAttack'];
+    'onForceUnitAttack', 'onRevealOrDiscard', 'onFriendlyAttack',
+    'onFriendlyDefeated', 'defenderAura'];
   const ASPECTS = ['command', 'aggression', 'cunning', 'vigilance', 'heroism', 'villainy'];
 
   function fail(id, msg) { throw new Error('content error [' + id + ']: ' + msg); }
@@ -25,7 +26,8 @@
     });
     (def.abilities || []).forEach(function (ab) {
       if (TRIGGERS.indexOf(ab.trigger) < 0) fail(id, 'unknown trigger ' + ab.trigger);
-      if (ab.trigger === 'constant' || ab.trigger === 'combatConstant' || ab.trigger === 'combatAura') {
+      if (ab.trigger === 'constant' || ab.trigger === 'combatConstant' ||
+          ab.trigger === 'combatAura' || ab.trigger === 'defenderAura') {
         if (!ab.grant) fail(id, 'constant ability without grant');
         (ab.grant.keywords || []).forEach(function (kw) {
           if (!SB.names.keywords[kw.k]) fail(id, 'unknown granted keyword ' + kw.k);

@@ -133,7 +133,8 @@
   };
 
   SB.readyResources = function (state, playerIdx) {
-    return state.players[playerIdx].resources.filter(function (r) { return !r.exhausted; }).length;
+    const p = state.players[playerIdx];
+    return p.resources.filter(function (r2) { return !r2.exhausted; }).length + (p.credits || 0);
   };
 
   SB.allUnits = function (state, playerIdx) {

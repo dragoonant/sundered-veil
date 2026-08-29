@@ -187,6 +187,12 @@
       acts.push({ type: 'smuggle', player: me, resourceIndex: ri, cardId: card.id });
     });
 
+    // Base epic action (once per game).
+    const baseCard = SB.card(p.base.cardId);
+    if (baseCard.epicAbility && !p.baseEpicUsed) {
+      acts.push({ type: 'baseEpic', player: me });
+    }
+
     if (!state.initiativeClaimed) acts.push({ type: 'claimInitiative', player: me });
     acts.push({ type: 'pass', player: me });
     return acts;
@@ -306,6 +312,12 @@
       playCard(state, me, action);
     } else if (action.type === 'attack') {
       startAttack(state, me, action);
+    } else if (action.type === 'baseEpic') {
+      const bc = SB.card(p.base.cardId);
+      expect(bc.epicAbility && !p.baseEpicUsed, action);
+      p.baseEpicUsed = true;
+      state.log.push({ type: 'baseEpic', player: me, sound: 'ability' });
+      SB.queueEffects(state, me, bc.epicAbility.effects, { cardId: p.base.cardId });
     } else if (action.type === 'smuggle') {
       const r = p.resources[action.resourceIndex];
       expect(r && r.instance.cardId === action.cardId, action);
@@ -392,10 +404,18 @@
   }
 
   function payResources(state, playerIdx, n) {
-    const res = state.players[playerIdx].resources;
+    const p = state.players[playerIdx];
+    const res = p.resources;
     let left = n;
     for (let i = 0; i < res.length && left > 0; i++) {
       if (!res[i].exhausted) { res[i].exhausted = true; left--; }
+    }
+    state.lastPaymentUsedCredit = false;
+    while (left > 0 && (p.credits || 0) > 0) {
+      p.credits -= 1;
+      left -= 1;
+      state.lastPaymentUsedCredit = true;
+      state.log.push({ type: 'creditSpent', player: playerIdx });
     }
     SB.assert(left === 0, 'could not pay ' + n + ' resources');
   }
@@ -426,6 +446,7 @@
       for (const d of p.discounts) {
         if (d.remaining <= 0) continue;
         if (d.filter.trait && (card.traits || []).indexOf(d.filter.trait) < 0) continue;
+        if (d.filter.type && card.type !== d.filter.type) continue;
         cost = Math.max(0, cost - d.amount);
         d.remaining -= 1;
         break;
@@ -456,6 +477,7 @@
       if (SB.card(inst.cardId).staticFlags &&
           SB.card(inst.cardId).staticFlags.indexOf('defeatAtRegroup') >= 0) unit.defeatAtRegroup = true;
       if (mods.entersReady) unit.exhausted = false;
+      if (card.entersReadyIf && SB.checkCondition(state, me, card.entersReadyIf, {})) unit.exhausted = false;
       if (mods.defeatAtRegroup) unit.defeatAtRegroup = true;
       state[card.arena].push(unit);
       if (SB.hasKeyword(state, unit, 'shielded')) {
@@ -467,7 +489,7 @@
         state.queue.push({ step: 'effect', controller: me, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
           op: { op: 'ambushAttack', target: null } });
       }
-      SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
+      SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid, paidCost: cost });
       if (p.echoNextOnPlay && (SB.card(inst.cardId).abilities || []).some(function (ab) { return ab.trigger === 'onPlay'; })) {
         delete p.echoNextOnPlay;
         SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
@@ -595,6 +617,11 @@
     if (!defender) return; // defender gone — no damage either way
     const mods = combatMods(state, attacker, defender);
     power += mods.power;
+    // Defender-side aura: "while this unit is defending, the attacker gets X".
+    (SB.unitDef(defender).abilities || []).forEach(function (ab) {
+      if (ab.trigger !== 'defenderAura') return;
+      power = Math.max(0, power + ((ab.grant || {}).attackerPower || 0));
+    });
     const defPower = Math.max(0, SB.unitPower(state, defender) + (item.defenderPowerDelta || 0));
     const overwhelm = SB.hasKeyword(state, attacker, 'overwhelm') || mods.overwhelm;
     const sab = SB.hasKeyword(state, attacker, 'saboteur');
@@ -764,10 +791,13 @@
       }
       if (item.step === 'combatDamage') {
         state.queue.shift();
+        const hadDefender = item.target.kind === 'unit' ? item.target.uid : null;
         resolveCombatDamage(state, item);
+        const defDefeated = hadDefender != null && !SB.findUnit(state, hadDefender);
         // "After this unit attacks" triggers, if the attacker survived.
         const atk = SB.findUnit(state, item.attackerUid);
-        if (atk) SB.fireTriggers(state, 'onAttackEnds', atk, { sourceUid: atk.uid, attackTarget: item.target });
+        if (atk) SB.fireTriggers(state, 'onAttackEnds', atk,
+          { sourceUid: atk.uid, attackTarget: item.target, defenderDefeated: defDefeated });
         continue;
       }
       if (item.step === 'effect') {
@@ -880,13 +910,16 @@
     // endRegroup is handled here rather than processQueue for locality:
   }
 
-  // Extend processQueue handling for endRegroup via a wrapper check inside apply:
+  // Extend processQueue handling for endRegroup via a wrapper check inside apply.
+  // finishRegroup can queue new triggers (e.g. deaths from expiring buffs), so the
+  // queue must be reprocessed afterwards.
   const origApply = SB.apply;
   SB.apply = function (prev, action) {
     const state = origApply(prev, action);
     while (state.queue.length > 0 && state.queue[0].step === 'endRegroup' && state.winner == null) {
       state.queue.shift();
       finishRegroup(state);
+      processQueue(state);
     }
     return state;
   };

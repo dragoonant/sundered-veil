@@ -39,6 +39,9 @@
     if (sel.nonLeader) s += ' (non-leader)';
     if (sel.nonUnique) s += ' (non-champion)';
     if (sel.damagedBaseThisPhase) s += ' that dealt damage to a base this phase';
+    if (sel.sharesTraitWithFriendlyLeader) s += ' that shares a kind with a friendly leader';
+    if (sel.sameArenaAsSaved) s += ' in the same arena as the chosen unit';
+    if (sel.powerLteSaved) s += ' with power no greater than the chosen unit’s';
     if (sel.damaged) s += ' that is damaged';       // engine: selectorCandidates .damaged
     return s;
   }
@@ -61,6 +64,8 @@
     if (op.amountRef === 'oddFriendlyCount') return '1 for each friendly unit or upgrade with an odd cost';
     if (op.amountRef === 'targetRemHpMinus1') return '1 less than its remaining HP in';
     if (/^stored:/.test(op.amountRef)) return 'that much';
+    if (op.amountRef === 'healedAmount') return 'that much';
+    if (op.amountRef === 'distinctFriendlyAspects') return '1 for each different aspect among your units in';
     return String(op.amount);
   }
 
@@ -243,6 +248,14 @@
     },
     revealHand: function () { return 'look at the opponent’s hand'; },
     experienceAll: function (op) { return 'give an experience token to each ' + scopeNoun(op.scope); },
+    buffTempRef: function (op) { return 'give ' + targetText(op) + ' +1/+1 for this round ' + amountText(op).replace(/^1 /, '') ; },
+    gainCredits: function (op) { return 'create ' + ((op.amount || 1) === 1 ? 'a credit token' : op.amount + ' credit tokens'); },
+    buffPerOwnAspects: function (op) { return 'give ' + targetText(op) + ' +1/+1 for this round for each different aspect it has'; },
+    arrangeTop2: function () { return 'look at the top 2 cards of your deck — bottom any number and keep the rest on top in any order'; },
+    bottomUnitFromDiscardPower: function () { return 'put a unit from your discard pile on the bottom of your deck'; },
+    exchangeControl: function () { return 'exchange control of a chosen friendly and enemy non-leader unit — whoever receives the cheaper unit creates credits equal to the cost difference'; },
+    oppChoosesUnitDamage: function (op) { return 'the opponent chooses one of their ' + (op.arena ? op.arena + ' ' : '') + 'units — you may deal ' + op.amount + ' damage to it'; },
+    auctionTop: function () { return 'choose a player: reveal the top card of their deck and they may play it for free — if they do, the other player creates credits equal to its cost'; },
     discardFromOpponentHandChoice: function () { return 'look at the opponent’s hand and discard a card from it'; },
     damagePerExploited: function () {
       return 'for each unit exploited while playing this card, you may deal damage equal to its power to an enemy unit';
@@ -299,6 +312,7 @@
     onForceUnitAttack: 'When a friendly mystic unit attacks',
     onRevealOrDiscard: 'When you reveal or discard cards from your hand',
     onFriendlyAttack: 'When another matching friendly unit attacks',
+    onFriendlyDefeated: 'When another friendly unit is defeated',
   };
 
   const conditionText = {
@@ -309,6 +323,12 @@
     hasForce: function () { return 'while you hold your power token'; },
     controlLeaderUnit: function () { return 'if you control a leader unit'; },
     defenderExhausted: function () { return 'if the defender is exhausted'; },
+    paidZero: function () { return 'if no resources were paid to play this unit'; },
+    controlUnitWithAspect2: function (c) {
+      return 'if you control a ' + c.aspects.map(function (a) { return SB.names.aspects[a] || a; }).join(' or ') + ' unit';
+    },
+    canPay: function (c) { return 'if you can pay ' + c.n + ' resource' + (c.n === 1 ? '' : 's'); },
+    defenderDefeated: function () { return 'if the defending unit was defeated'; },
     canDisclose: function (c) {
       return 'if you can reveal the required icons: ' +
         (c.aspects || []).map(function (a) { return SB.names.aspects[a] || a; }).join(', ');
@@ -345,6 +365,9 @@
   };
 
   function describeAbility(ab) {
+    if (ab.trigger === 'defenderAura') {
+      return 'While this unit is defending, the attacker gets ' + ((ab.grant || {}).attackerPower || 0) + '/+0.';
+    }
     if (ab.trigger === 'combatAura') {
       const g = ab.grant || {};
       const parts = [];
@@ -373,6 +396,7 @@
       if (g.power || g.hp) parts.push('gets +' + (g.power || 0) + '/+' + (g.hp || 0));
       if (g.dynamicPower === 'friendlyPilotsAndPilotUpgrades') parts.push('gets +1/+0 for each other friendly pilot unit or pilot upgrade');
       if (g.dynamicPower === 'pilotsOnSelf') parts.push('gets +1/+0 for each pilot on it');
+      if (g.traits) parts.push('gains the ' + g.traits.map(function (tr) { return SB.names.traits[tr] || tr; }).join(', ') + ' kind');
       (g.keywords || []).forEach(function (kw) {
         parts.push('gains ' + (SB.names.keywords[kw.k] || kw.k) + (kw.n != null ? ' ' + kw.n : ''));
       });
@@ -439,6 +463,13 @@
       if (card.pilotSide) block(card.pilotSide, 'Pilot');
     } else {
       block(card);
+      if (card.epicAbility) {
+        lines.push('Epic Action (once per game): ' + card.epicAbility.effects.map(function (op) {
+          const fn = opText[op.op];
+          if (!fn) throw new Error('no text for op ' + op.op);
+          return fn(op);
+        }).join(', then ') + '.');
+      }
       if (card.type === 'upgrade') {
         const p = card.power || 0, h = card.hp || 0;
         if (p || h) lines.unshift('Attached unit gets +' + p + '/+' + h + '.');
