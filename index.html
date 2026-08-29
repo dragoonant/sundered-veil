@@ -19,6 +19,7 @@
       <option value="hard">Hard</option>
     </select>
     <button id="new-game-btn">New game</button>
+    <button id="help-btn">How to play</button>
   </div>
   <div id="board">
     <div id="enemy-row">
@@ -74,6 +75,7 @@
 <script src="data/names-4.js"></script>
 <script src="js/logtext.js"></script>
 <script src="js/sound.js"></script>
+<script src="js/help.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/ui.js"></script>
 <script>
@@ -97,6 +99,7 @@
   }
   document.getElementById('new-game-btn').onclick = newGame;
   document.getElementById('undo-btn').onclick = function () { SB.ui.undo(); };
+  document.getElementById('help-btn').onclick = function () { SB.help.open(); };
   newGame();
 })();
 </script>
