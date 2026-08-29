@@ -32,8 +32,26 @@
         if (sel.trait && (SB.unitDef(u).traits || []).indexOf(sel.trait) < 0 &&
             (SB.card(u.cardId).traits || []).indexOf(sel.trait) < 0) return;
         if (sel.maxCost != null && SB.card(u.cardId).cost > sel.maxCost) return;
+        if (sel.minCost != null && SB.card(u.cardId).cost < sel.minCost) return;
         if (sel.damaged && u.damage === 0) return;
         if (sel.notSelf && u.uid === ctx.sourceUid) return;
+        if (sel.aspect && (SB.card(u.cardId).aspects || []).indexOf(sel.aspect) < 0) return;
+        if (sel.notTrait && ((SB.unitDef(u).traits || []).indexOf(sel.notTrait) >= 0 ||
+            (SB.card(u.cardId).traits || []).indexOf(sel.notTrait) >= 0)) return;
+        if (sel.maxRemHp != null && SB.unitRemainingHp(state, u) > sel.maxRemHp) return;
+        if (sel.nonLeader && SB.card(u.cardId).type === 'leader') return;
+        if (sel.leader && SB.card(u.cardId).type !== 'leader') return;
+        if (sel.nonUnique && SB.card(u.cardId).unique) return;
+        if (sel.playedThisRound && u.enteredRound !== state.round) return;
+        if (sel.exhaustedOnly && !u.exhausted) return;
+        if (sel.readyOnly && u.exhausted) return;
+        if (sel.cardIs && sel.cardIs.indexOf(u.cardId) < 0) return;
+        if (sel.token === false && SB.card(u.cardId).token) return;
+        if (sel.notSavedAs) {
+          const names = Array.isArray(sel.notSavedAs) ? sel.notSavedAs : [sel.notSavedAs];
+          const store = SB.efx(state, ctx);
+          if (names.some(function (n) { const t = store[n]; return t && t.uid === u.uid; })) return;
+        }
         out.push({ kind: 'unit', uid: u.uid });
       });
     }
@@ -81,6 +99,8 @@
     const i = list.indexOf(unit);
     if (i < 0) return; // already gone (e.g. double-defeat in one resolution)
     list.splice(i, 1);
+    state.defeatedThisPhase = state.defeatedThisPhase || [];
+    state.defeatedThisPhase.push({ uid: unit.uid, owner: unit.owner, cardId: unit.cardId });
     state.log.push({ type: 'defeated', uid: unit.uid, cardId: unit.cardId, sound: 'destroy' });
     const card = SB.card(unit.cardId);
     const owner = state.players[unit.owner];
@@ -130,24 +150,116 @@
 
   SB.queueEffects = function (state, controller, effects, ctx) {
     // Insert at the FRONT in order: effects of the newest trigger resolve before
-    // previously queued items (nested-resolution ordering).
+    // previously queued items (nested-resolution ordering). Each invocation gets an
+    // id so ops can share saved targets/amounts via state.efx (ctx objects are
+    // cloned apart by apply(), so shared data cannot live on ctx itself).
+    ctx = ctx || {};
+    if (ctx.inv == null) { ctx.inv = state.nextUid++; }
     const items = effects.map(function (op) {
       return { step: 'effect', controller: controller, op: op, ctx: ctx };
     });
     state.queue = items.concat(state.queue);
   };
 
+  SB.efx = function (state, ctx) {
+    state.efx = state.efx || {};
+    const key = String(ctx && ctx.inv != null ? ctx.inv : 0);
+    return state.efx[key] = state.efx[key] || {};
+  };
+
+  // Amount resolution: literal op.amount, or op.amountRef into the invocation store
+  // / combat context. Refs: 'lastHealed', 'excess', 'powerOf:<name>',
+  // 'friendlyInTargetArena'.
+  SB.resolveAmount = function (state, item, target) {
+    const op = item.op;
+    if (op.amountRef == null) return op.amount;
+    const store = SB.efx(state, item.ctx);
+    if (op.amountRef === 'lastHealed') return store.lastHealed || 0;
+    if (op.amountRef === 'excess') return (item.ctx && item.ctx.excess) || 0;
+    if (op.amountRef === 'friendlyInTargetArena') {
+      if (!target || target.kind !== 'unit') return 0;
+      const u = SB.findUnit(state, target.uid);
+      if (!u) return 0;
+      const arena = SB.arenaOf(state, u);
+      return state[arena].filter(function (x) { return x.owner === item.controller; }).length;
+    }
+    const m = op.amountRef.match(/^powerOf:(.+)$/);
+    if (m) {
+      const t = store[m[1]];
+      const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+      return u ? SB.unitPower(state, u) : 0;
+    }
+    throw new Error('unknown amountRef ' + op.amountRef);
+  };
+
+  // Central op execution: saved-target reuse + save-after + handler dispatch.
+  SB.execOp = function (state, item, target) {
+    if (item.op.saveTargetAs && target) SB.efx(state, item.ctx)[item.op.saveTargetAs] = target;
+    SB.ops[item.op.op](state, item, target);
+  };
+
   // --- conditions ----------------------------------------------------------
 
   SB.checkCondition = function (state, controller, cond, ctx) {
     if (!cond) return true;
+    // Generic negation: {if:'x', not:true} — except 'saved', which handles its own.
+    if (cond.not && cond.if !== 'saved') {
+      return !SB.checkCondition(state, controller, Object.assign({}, cond, { not: false }), ctx);
+    }
     switch (cond.if) {
+      case 'savedHasTrait': {
+        const t = SB.efx(state, ctx)[cond.name];
+        const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+        if (!u) return false;
+        return (SB.unitDef(u).traits || []).indexOf(cond.trait) >= 0 ||
+          (SB.card(u.cardId).traits || []).indexOf(cond.trait) >= 0;
+      }
+      case 'bearerHasTrait': {
+        const bearer = SB.findUnit(state, ctx.sourceUid);
+        if (!bearer) return false;
+        return (SB.unitDef(bearer).traits || []).indexOf(cond.trait) >= 0 ||
+          (SB.card(bearer.cardId).traits || []).indexOf(cond.trait) >= 0;
+      }
       case 'controlUnitWithTrait':
         return SB.allUnits(state, controller).some(function (u) {
           return (SB.unitDef(u).traits || []).indexOf(cond.trait) >= 0 && u.uid !== ctx.sourceUid;
         });
       case 'hasInitiative': return state.initiative === controller;
       case 'baseDamaged': return state.players[controller].base.damage > 0;
+      case 'enemyBaseDamaged': return state.players[SB.other(controller)].base.damage > 0;
+      case 'resourcesAtLeast': return state.players[controller].resources.length >= cond.n;
+      case 'playedAspectThisPhase':
+        return (state.players[controller].playedThisPhase || []).some(function (cid) {
+          return (SB.card(cid).aspects || []).indexOf(cond.aspect) >= 0;
+        });
+      case 'playedCardThisPhase': return (state.players[controller].playedThisPhase || []).length > 0;
+      case 'friendlyDefeatedThisPhase': return (state.defeatedThisPhase || []).some(function (d) { return d.owner === controller; });
+      case 'attachedIs': {
+        // Context: upgrade ability; ctx.sourceUid is the bearer unit.
+        const bearer = SB.findUnit(state, ctx.sourceUid);
+        return !!bearer && cond.cards.indexOf(bearer.cardId) >= 0;
+      }
+      case 'controlCard':
+        // Leader (either side) or unit with one of these card ids.
+        return cond.cards.some(function (cid) {
+          if (SB.allUnits(state, controller).some(function (u) { return u.cardId === cid; })) return true;
+          return state.players[controller].leader.cardId === cid;
+        });
+      case 'milledNonUnit': {
+        const st = SB.efx(state, ctx);
+        return st.milledTypes && st.milledTypes.length > 0 &&
+          st.milledTypes.every(function (t) { return t !== 'unit'; });
+      }
+      case 'saved': {
+        const has = SB.efx(state, ctx)[cond.name] != null;
+        return cond.not ? !has : has;
+      }
+      case 'selfDamaged': {
+        const self = SB.findUnit(state, ctx.sourceUid);
+        return !!self && self.damage > 0;
+      }
+      case 'controlMoreUnitsThanOpponent':
+        return SB.allUnits(state, controller).length > SB.allUnits(state, SB.other(controller)).length;
       default: throw new Error('unknown condition ' + cond.if);
     }
   };
@@ -158,7 +270,7 @@
   // ops. Handlers run only after any required choice was made.
   SB.ops = {
     damage: function (state, item, target) {
-      const amt = item.op.amount;
+      const amt = SB.resolveAmount(state, item, target);
       if (target.kind === 'base') SB.damageBase(state, target.player, amt, 'effect');
       else {
         const u = SB.findUnit(state, target.uid);
@@ -166,23 +278,50 @@
       }
     },
     heal: function (state, item, target) {
-      const amt = item.op.amount;
+      const amt = SB.resolveAmount(state, item, target);
+      let healed = 0;
       if (target.kind === 'base') {
         const b = state.players[target.player].base;
-        const healed = Math.min(amt, b.damage);
+        healed = Math.min(amt, b.damage);
         b.damage -= healed;
         if (healed > 0) state.log.push({ type: 'baseHeal', player: target.player, amount: healed, sound: 'heal' });
       } else {
         const u = SB.findUnit(state, target.uid);
         if (u) {
-          const healed = Math.min(amt, u.damage);
+          healed = Math.min(amt, u.damage);
           u.damage -= healed;
           if (healed > 0) state.log.push({ type: 'unitHeal', uid: u.uid, amount: healed, sound: 'heal' });
         }
       }
+      SB.efx(state, item.ctx).lastHealed = healed;
     },
     draw: function (state, item) {
-      SB.drawCards(state, item.controller, item.op.amount || 1);
+      let who = item.controller;
+      if (item.op.who === 'opponent') who = SB.other(item.controller);
+      if (item.op.who === 'targetOwner') {
+        const t = SB.efx(state, item.ctx)[item.op.ofSaved];
+        const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
+        if (u) who = u.owner; else if (t && t.kind === 'base') who = t.player; else return;
+      }
+      SB.drawCards(state, who, item.op.amount || 1);
+    },
+    healFull: function (state, item, target) {
+      const u = SB.findUnit(state, target.uid);
+      if (u && u.damage > 0) {
+        state.log.push({ type: 'unitHeal', uid: u.uid, amount: u.damage, sound: 'heal' });
+        u.damage = 0;
+      }
+    },
+    stunExhaust: function (state, item, target) {
+      // Exhaust and prevent readying this round (including regroup).
+      const u = SB.findUnit(state, target.uid);
+      if (!u) return;
+      u.exhausted = true;
+      u.stunned = true;
+      state.log.push({ type: 'stunned', uid: u.uid, sound: 'ability' });
+    },
+    opponentMayReady: function (state, item) {
+      state.queue.unshift({ step: 'mayReadyOwn', player: SB.other(item.controller) });
     },
     shield: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
@@ -193,12 +332,13 @@
       if (u) { u.experience += (item.op.amount || 1); state.log.push({ type: 'experience', uid: u.uid, sound: 'buff' }); }
     },
     buffTemp: function (state, item, target) {
-      // Lasts for the round; cleared in regroup.
+      // Lasts for the round; cleared in regroup. A negative HP change can defeat.
       const u = SB.findUnit(state, target.uid);
       if (u) {
         u.temp.power += (item.op.power || 0);
         u.temp.hp += (item.op.hp || 0);
         state.log.push({ type: 'buff', uid: u.uid, power: item.op.power || 0, hp: item.op.hp || 0, sound: 'buff' });
+        if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, item.ctx);
       }
     },
     defeat: function (state, item, target) {
@@ -211,7 +351,7 @@
     },
     ready: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
-      if (u && u.exhausted) { u.exhausted = false; state.log.push({ type: 'readied', uid: u.uid }); }
+      if (u && u.exhausted && !u.stunned) { u.exhausted = false; state.log.push({ type: 'readied', uid: u.uid }); }
     },
     returnHand: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
@@ -251,8 +391,26 @@
         state.log.push({ type: 'fizzle', why: 'condition', cardId: item.ctx.cardId, fizzled: true });
         continue;
       }
+      // Per-op condition (in addition to the ability-level one).
+      if (op.condition && !SB.checkCondition(state, item.controller, op.condition, item.ctx || {})) {
+        state.queue.shift();
+        state.log.push({ type: 'fizzle', why: 'condition', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+        continue;
+      }
       const handler = SB.ops[op.op];
       if (!handler) throw new Error('unknown op ' + op.op);
+
+      // Reuse a target chosen by an earlier op of this invocation.
+      if (op.useTarget) {
+        state.queue.shift();
+        const t = SB.efx(state, item.ctx)[op.useTarget];
+        if (!t) {
+          state.log.push({ type: 'fizzle', why: 'noSavedTarget', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+          continue;
+        }
+        SB.execOp(state, item, t);
+        continue;
+      }
 
       if (op.target) {
         const cands = SB.selectorCandidates(state, item.controller, op.target, item.ctx || {});
@@ -263,14 +421,14 @@
         }
         if (cands.length === 1 && !op.target.optional) {
           state.queue.shift();
-          handler(state, item, cands[0]);
+          SB.execOp(state, item, cands[0]);
           continue;
         }
         item.candidates = cands; // legalActions will offer 'choose' (and 'declineChoice' if optional)
         return;
       }
       state.queue.shift();
-      handler(state, item, null);
+      SB.execOp(state, item, null);
     }
   };
 })(window.SB = window.SB || {});

@@ -60,11 +60,78 @@
 
   O.buffAll = function (state, item) {
     const cands = SB.selectorCandidates(state, item.controller, item.op.scope, item.ctx || {});
-    cands.forEach(function (c) {
-      const u = SB.findUnit(state, c.uid);
-      if (u) { u.temp.power += (item.op.power || 0); u.temp.hp += (item.op.hp || 0); }
+    const units = cands.map(function (c) { return SB.findUnit(state, c.uid); }).filter(Boolean);
+    units.forEach(function (u) { u.temp.power += (item.op.power || 0); u.temp.hp += (item.op.hp || 0); });
+    units.forEach(function (u) {
+      if (SB.findUnit(state, u.uid) && SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, item.ctx);
     });
     state.log.push({ type: 'buffAll', power: item.op.power || 0, hp: item.op.hp || 0, sound: 'buff' });
+  };
+
+  // Choice-only op: pick a unit and save it for later ops (via saveTargetAs).
+  O.pickUnit = function () { /* the save happens in SB.execOp */ };
+
+  // Divided damage: controller assigns N points one at a time among units matched
+  // by scope (default: enemy units).
+  O.dividedDamage = function (state, item) {
+    const total = SB.resolveAmount(state, item, null);
+    for (let i = 0; i < total; i++) {
+      state.queue.unshift({ step: 'dividedPoint', player: item.controller,
+        scope: item.op.scope || { who: 'enemy', what: 'unit' }, ctx: item.ctx });
+    }
+  };
+
+  // A friendly unit attacks immediately (effect-driven attack).
+  // {target: sel-of-attacker, bonusPower?, firstStrike?, ready?: allow exhausted}
+  O.attackWith = function (state, item, target) {
+    const u = SB.findUnit(state, target.uid);
+    if (!u) return;
+    if (u.exhausted && !item.op.ready) return;
+    state.queue.unshift({ step: 'attackTargetChoice', player: item.controller, uid: u.uid,
+      bonusPower: item.op.bonusPower || 0, firstStrike: !!item.op.firstStrike, ready: !!item.op.ready,
+      optional: !!item.op.optionalAttack });
+  };
+
+  // Look at the top card of your deck and decide. modes ⊆ ['leave','bottom','discard','play'].
+  O.peekTop = function (state, item) {
+    state.queue.unshift({ step: 'peekDecide', player: item.controller, modes: item.op.modes });
+  };
+
+  // Play a card from hand via an effect. {filter?, discount?, entersReady?, defeatAtRegroup?, optional?}
+  O.playFromHand = function (state, item) {
+    state.queue.unshift({ step: 'playHandPick', player: item.controller, filter: item.op.filter || {},
+      discount: item.op.discount || 0, entersReady: !!item.op.entersReady,
+      defeatAtRegroup: !!item.op.defeatAtRegroup, optional: item.op.optional !== false });
+  };
+
+  // Mill: discard top N cards of own deck; records their types for conditions.
+  O.mill = function (state, item) {
+    const p = state.players[item.controller];
+    const types = [];
+    for (let i = 0; i < (item.op.amount || 1) && p.deck.length > 0; i++) {
+      const inst = p.deck.shift();
+      p.discard.push(inst);
+      types.push(SB.card(inst.cardId).type);
+      state.log.push({ type: 'milled', player: item.controller, cardId: inst.cardId });
+    }
+    SB.efx(state, item.ctx).milledTypes = types;
+  };
+
+  // A named player picks one of two effect lists. {chooser:'opponent'|'self', a:{effects}, b:{effects}}
+  O.binaryChoice = function (state, item) {
+    const who = item.op.chooser === 'opponent' ? SB.other(item.controller) : item.controller;
+    state.queue.unshift({ step: 'binaryPick', player: who, controller: item.controller,
+      a: item.op.a, b: item.op.b, ctx: item.ctx });
+  };
+
+  // An event that banks itself: move it from the discard pile to resources.
+  O.selfToResource = function (state, item) {
+    const p = state.players[item.controller];
+    const i = p.discard.findIndex(function (inst) { return inst.uid === (item.ctx && item.ctx.eventUid); });
+    if (i < 0) return;
+    const inst = p.discard.splice(i, 1)[0];
+    p.resources.push({ instance: inst, exhausted: false });
+    state.log.push({ type: 'resourced', player: item.controller });
   };
 
   // Give a keyword until end of round (cleared in regroup with temp stats).
@@ -241,14 +308,160 @@
     },
     apply: function (state, itemStep, action) {
       const p = state.players[itemStep.player];
-      if (action.deckIndex >= 0) {
+      const took = action.deckIndex >= 0;
+      if (took) {
         const inst = p.deck.splice(action.deckIndex, 1)[0];
         p.hand.push(inst);
         state.log.push({ type: 'searched', player: itemStep.player });
       }
-      // Shuffle after searching (seeded).
+      if (took && itemStep.remaining > 1) {
+        // Multi-take search: keep picking from the same window before shuffling.
+        state.queue.unshift({ step: 'searchPick', player: itemStep.player, filter: itemStep.filter,
+          remaining: itemStep.remaining - 1, depth: itemStep.depth == null ? null : itemStep.depth - 1, toHand: true });
+        return;
+      }
+      // Shuffle after searching (seeded). (Printed rule bottoms the unseen window in
+      // random order; a full shuffle is mechanically equivalent for hidden zones.)
       p.deck = SB.shuffled(p.deck, SB.rng(SB.stateSeed(state, 'searchShuffle')));
       state.log.push({ type: 'deckShuffled', player: itemStep.player });
+    },
+  };
+
+  SB.queueSteps.dividedPoint = {
+    actions: function (state, itemStep) {
+      const cands = SB.selectorCandidates(state, itemStep.player, itemStep.scope, itemStep.ctx || {});
+      return cands.filter(function (c) { return c.kind === 'unit'; }).map(function (c) {
+        return { type: 'dividedTo', player: itemStep.player, target: c };
+      });
+    },
+    apply: function (state, itemStep, action) {
+      const u = SB.findUnit(state, action.target.uid);
+      if (u) SB.damageUnit(state, u, 1, itemStep.ctx || {});
+    },
+  };
+
+  SB.queueSteps.attackTargetChoice = {
+    actions: function (state, itemStep) {
+      const u = SB.findUnit(state, itemStep.uid);
+      if (!u) return null;
+      if (u.exhausted && !itemStep.ready) return null;
+      const acts = SB.attackTargets(state, u).map(function (t) {
+        return { type: 'effectAttack', player: itemStep.player, target: t };
+      });
+      if (itemStep.optional && acts.length) acts.push({ type: 'effectAttack', player: itemStep.player, target: null });
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      if (!action.target) return; // declined optional attack
+      const u = SB.findUnit(state, itemStep.uid);
+      if (!u) return;
+      SB.performAttack(state, u, action.target, {
+        bonusPower: itemStep.bonusPower, firstStrike: itemStep.firstStrike, ready: itemStep.ready,
+      });
+    },
+  };
+
+  SB.queueSteps.mayReadyOwn = {
+    actions: function (state, itemStep) {
+      const acts = [];
+      SB.allUnits(state, itemStep.player).forEach(function (u) {
+        if (u.exhausted && !u.stunned) acts.push({ type: 'mayReady', player: itemStep.player, uid: u.uid });
+      });
+      if (acts.length === 0) return null;
+      acts.push({ type: 'mayReady', player: itemStep.player, uid: null }); // decline
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.uid == null) return;
+      const u = SB.findUnit(state, action.uid);
+      if (u && u.exhausted && !u.stunned) { u.exhausted = false; state.log.push({ type: 'readied', uid: u.uid }); }
+    },
+  };
+
+  SB.queueSteps.peekDecide = {
+    actions: function (state, itemStep) {
+      const p = state.players[itemStep.player];
+      if (p.deck.length === 0) return null;
+      const acts = [];
+      const inst = p.deck[0];
+      const card = SB.card(inst.cardId);
+      itemStep.modes.forEach(function (m) {
+        if (m === 'play') {
+          const cost = SB.cardCost(state, itemStep.player, inst.cardId);
+          if (cost > SB.readyResources(state, itemStep.player)) return;
+          if (card.type === 'unit' || card.type === 'event') {
+            acts.push({ type: 'peekAct', player: itemStep.player, mode: 'play', cardId: inst.cardId });
+          } else if (card.type === 'upgrade') {
+            SB.allUnits(state).forEach(function (u) {
+              if (card.attachTo === 'friendly' && u.owner !== itemStep.player) return;
+              if (card.attachTo === 'enemy' && u.owner === itemStep.player) return;
+              acts.push({ type: 'peekAct', player: itemStep.player, mode: 'play', cardId: inst.cardId, attachTo: u.uid });
+            });
+          }
+        } else {
+          acts.push({ type: 'peekAct', player: itemStep.player, mode: m });
+        }
+      });
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      const p = state.players[itemStep.player];
+      const inst = p.deck[0];
+      if (!inst) return;
+      if (action.mode === 'leave') {
+        state.log.push({ type: 'peeked', player: itemStep.player });
+      } else if (action.mode === 'bottom') {
+        p.deck.shift(); p.deck.push(inst);
+        state.log.push({ type: 'peekBottomed', player: itemStep.player });
+      } else if (action.mode === 'discard') {
+        p.deck.shift(); p.discard.push(inst);
+        state.log.push({ type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
+      } else if (action.mode === 'play') {
+        SB.playCardWithMods(state, itemStep.player,
+          { fromDeckTop: true, cardId: inst.cardId, attachTo: action.attachTo }, {});
+      }
+    },
+  };
+
+  SB.queueSteps.playHandPick = {
+    actions: function (state, itemStep) {
+      const p = state.players[itemStep.player];
+      const acts = [];
+      p.hand.forEach(function (inst, i) {
+        const card = SB.card(inst.cardId);
+        const f = itemStep.filter;
+        if (f.type && card.type !== f.type) return;
+        if (f.trait && (card.traits || []).indexOf(f.trait) < 0) return;
+        if (f.maxCost != null && card.cost > f.maxCost) return;
+        const cost = Math.max(0, SB.cardCost(state, itemStep.player, inst.cardId) - itemStep.discount);
+        if (cost > SB.readyResources(state, itemStep.player)) return;
+        if (card.type === 'unit' && card.unique &&
+            SB.allUnits(state, itemStep.player).some(function (u) { return u.cardId === inst.cardId; })) return;
+        acts.push({ type: 'playHandCard', player: itemStep.player, handIndex: i, cardId: inst.cardId });
+      });
+      if (acts.length === 0) return null;
+      if (itemStep.optional) acts.push({ type: 'playHandCard', player: itemStep.player, handIndex: -1 });
+      return acts;
+    },
+    apply: function (state, itemStep, action) {
+      if (action.handIndex === -1) return;
+      SB.playCardWithMods(state, itemStep.player,
+        { handIndex: action.handIndex, cardId: action.cardId },
+        { discount: itemStep.discount, entersReady: itemStep.entersReady, defeatAtRegroup: itemStep.defeatAtRegroup });
+    },
+  };
+
+  SB.queueSteps.binaryPick = {
+    actions: function (state, itemStep) {
+      return [
+        { type: 'binary', player: itemStep.player, pick: 'a' },
+        { type: 'binary', player: itemStep.player, pick: 'b' },
+      ];
+    },
+    apply: function (state, itemStep, action) {
+      const branch = itemStep[action.pick];
+      state.log.push({ type: 'binaryChosen', player: itemStep.player, pick: action.pick });
+      SB.queueEffects(state, itemStep.controller, branch.effects, itemStep.ctx || {});
     },
   };
 

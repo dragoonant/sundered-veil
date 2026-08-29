@@ -34,7 +34,7 @@
   "jtl-201": {"id":"jtl-201","type":"unit","aspects":["cunning","heroism"],"traits":["tr13","tr12"],"unique":true,"cost":4,"power":3,"hp":5,"arena":"ground"},
   "jtl-208": {"id":"jtl-208","type":"event","aspects":["cunning","heroism"],"traits":["tr14"],"cost":3},
   "jtl-209": {"id":"jtl-209","type":"event","aspects":["cunning","heroism"],"traits":["tr14"],"cost":3},
-  "jtl-210": {"id":"jtl-210","type":"unit","aspects":["cunning"],"traits":["tr25","tr03","tr30"],"unique":true,"cost":5,"power":5,"hp":6,"arena":"ground"},
+  "jtl-210": {"id":"jtl-210","type":"unit","aspects":["cunning","cunning"],"traits":["tr25","tr03","tr30"],"unique":true,"cost":5,"power":5,"hp":6,"arena":"ground"},
   "jtl-215": {"id":"jtl-215","type":"unit","aspects":["cunning"],"traits":["tr13","tr30"],"unique":true,"cost":3,"power":3,"hp":4,"arena":"ground"},
   "jtl-216": {"id":"jtl-216","type":"unit","aspects":["cunning"],"traits":["tr45","tr03"],"cost":3,"power":4,"hp":4,"arena":"ground"},
   "jtl-217": {"id":"jtl-217","type":"unit","aspects":["cunning"],"traits":["tr45","tr46","tr10"],"cost":3,"power":3,"hp":3,"arena":"space"},

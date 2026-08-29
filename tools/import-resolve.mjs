@@ -181,6 +181,26 @@ for (const pair of [['sec-spotlight-padme', 'sec-spotlight-padme-img'], ['sec-sp
 
 if (problems.length) { console.log('\nPROBLEMS:'); problems.forEach(p => console.log(' -', p)); }
 
+// ---- authoritative overrides ----------------------------------------------
+// swudb-diffs.json (built by cross-validating api.swu-db.com) corrects dotgg's
+// dropped third aspects and wrong stats. Applied to every deck's card entries.
+try {
+  const diffs = JSON.parse(readFileSync(join(SCRATCH, 'swudb-diffs.json'), 'utf8'));
+  for (const d of Object.values(out)) {
+    for (const c of [d.leader, d.base, ...d.cards]) {
+      if (!c) continue;
+      const key = c.set + '-' + String(c.number).padStart(3, '0');
+      const fix = diffs[key];
+      if (!fix || fix.error) continue;
+      if (fix.swudb) c.aspects = fix.swudb.map(a => a.charAt(0).toUpperCase() + a.slice(1));
+      if (fix.cost) c.cost = fix.cost[1];
+      if (fix.power) c.power = fix.power[1];
+      if (fix.hp) c.hp = fix.hp[1];
+    }
+  }
+  console.log('applied swudb overrides');
+} catch (e) { console.warn('no swudb-diffs.json applied:', e.message); }
+
 // ---- outputs --------------------------------------------------------------
 // The *-img decks exist only to cross-check the dotgg versions; drop them.
 delete out['sec-spotlight-padme-img'];

@@ -77,7 +77,13 @@
       const i = avail.indexOf(a);
       if (i >= 0) avail.splice(i, 1); else penalty += 2;
     });
-    return card.cost + penalty;
+    let cost = card.cost + penalty;
+    // Conditional printed cost modifier (e.g. "costs 1 less while you control ...").
+    if (card.costMod && SB.checkCondition &&
+        SB.checkCondition(state, playerIdx, card.costMod, {})) {
+      cost += card.costMod.delta;
+    }
+    return Math.max(0, cost);
   };
 
   SB.readyResources = function (state, playerIdx) {

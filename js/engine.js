@@ -77,6 +77,12 @@
           if (card.attachTo === 'friendly' && u.owner !== me) return;
           if (card.attachTo === 'enemy' && u.owner === me) return;
           if (card.attachArena && SB.arenaOf(state, u) !== card.attachArena) return;
+          if (card.attachFilter) {
+            const f = card.attachFilter;
+            const traits = (SB.unitDef(u).traits || []).concat(SB.card(u.cardId).traits || []);
+            if (f.notTrait && traits.indexOf(f.notTrait) >= 0) return;
+            if (f.trait && traits.indexOf(f.trait) < 0) return;
+          }
           acts.push({ type: 'playCard', player: me, handIndex: i, cardId: inst.cardId, attachTo: u.uid });
         });
       }
@@ -215,7 +221,7 @@
     const target = item.candidates[action.index];
     expect(target, action);
     delete item.candidates;
-    SB.ops[item.op.op](state, item, target);
+    SB.execOp(state, item, target);
   }
 
   function applyPhaseAction(state, action) {
@@ -288,20 +294,25 @@
     SB.assert(left === 0, 'could not pay ' + n + ' resources');
   }
 
-  function playCard(state, me, action) {
+  function playCard(state, me, action, mods) {
+    mods = mods || {};
     const p = state.players[me];
-    const inst = p.hand[action.handIndex];
+    const inst = action.fromDeckTop ? p.deck[0] : p.hand[action.handIndex];
     expect(inst && inst.cardId === action.cardId, action);
     const card = SB.card(inst.cardId);
-    const cost = SB.cardCost(state, me, inst.cardId);
+    const cost = Math.max(0, SB.cardCost(state, me, inst.cardId) - (mods.discount || 0));
     expect(cost <= SB.readyResources(state, me), action);
     payResources(state, me, cost);
-    p.hand.splice(action.handIndex, 1);
+    if (action.fromDeckTop) p.deck.shift(); else p.hand.splice(action.handIndex, 1);
+    p.playedThisPhase = p.playedThisPhase || [];
+    p.playedThisPhase.push(inst.cardId);
     state.log.push({ type: 'playCard', player: me, cardId: inst.cardId, cost: cost, sound: 'play' });
 
     if (card.type === 'unit') {
       const unit = SB.makeUnit(state, inst.cardId, me);
       unit.uid = inst.uid; // keep instance identity
+      if (mods.entersReady) unit.exhausted = false;
+      if (mods.defeatAtRegroup) unit.defeatAtRegroup = true;
       state[card.arena].push(unit);
       if (SB.hasKeyword(state, unit, 'shielded')) {
         unit.shields += 1;
@@ -320,7 +331,18 @@
       });
     } else if (card.type === 'event') {
       p.discard.push(inst);
-      SB.queueEffects(state, me, collectEffects(card), { cardId: inst.cardId });
+      p.eventsThisRound = (p.eventsThisRound || 0) + 1;
+      // Static negation aura: an enemy unit may cancel the first event you play
+      // each round (see staticFlags in card data; behavior of sor-089).
+      const negated = p.eventsThisRound === 1 &&
+        SB.allUnits(state, SB.other(me)).some(function (u) {
+          return (SB.unitDef(u).staticFlags || []).indexOf('negateFirstEvent') >= 0;
+        });
+      if (negated) {
+        state.log.push({ type: 'fizzle', why: 'negated', cardId: inst.cardId, fizzled: true, notice: true });
+      } else {
+        SB.queueEffects(state, me, collectEffects(card), { cardId: inst.cardId, eventUid: inst.uid });
+      }
     } else if (card.type === 'upgrade') {
       const target = SB.findUnit(state, action.attachTo);
       expect(target, action);
@@ -354,10 +376,26 @@
   // Ambush is modeled as an op so it flows through the normal choice machinery.
   SB.ops.ambushAttack = function () { /* resolved via candidates below */ };
 
+  // Combat-only bonuses: abilities with trigger 'combatConstant' on the attacker.
+  // grant = {power?, powerPerSelfDamage?, keywords?:[{k}]} — condition kinds:
+  // 'defenderDamaged'. Keep SB.cardText's combat describers in step with this.
+  function combatMods(state, attacker, defender) {
+    const mods = { power: 0, overwhelm: false };
+    (SB.unitDef(attacker).abilities || []).forEach(function (ab) {
+      if (ab.trigger !== 'combatConstant') return;
+      if (ab.condition && ab.condition.if === 'defenderDamaged' && (!defender || defender.damage === 0)) return;
+      const g = ab.grant || {};
+      mods.power += g.power || 0;
+      if (g.powerPerSelfDamage) mods.power += g.powerPerSelfDamage * attacker.damage;
+      (g.keywords || []).forEach(function (kw) { if (kw.k === 'overwhelm') mods.overwhelm = true; });
+    });
+    return mods;
+  }
+
   function resolveCombatDamage(state, item) {
     const attacker = SB.findUnit(state, item.attackerUid);
     if (!attacker) return; // attacker died to a trigger — attack fizzles
-    let power = SB.unitPower(state, attacker) + SB.keywordTotal(state, attacker, 'raid');
+    let power = SB.unitPower(state, attacker) + SB.keywordTotal(state, attacker, 'raid') + (item.bonusPower || 0);
     const restore = SB.keywordTotal(state, attacker, 'restore');
     if (restore > 0) {
       const b = state.players[attacker.owner].base;
@@ -371,21 +409,73 @@
     }
     const defender = SB.findUnit(state, item.target.uid);
     if (!defender) return; // defender gone — no damage either way
+    const mods = combatMods(state, attacker, defender);
+    power += mods.power;
     const defPower = SB.unitPower(state, defender);
-    const overwhelm = SB.hasKeyword(state, attacker, 'overwhelm');
+    const overwhelm = SB.hasKeyword(state, attacker, 'overwhelm') || mods.overwhelm;
     const sab = SB.hasKeyword(state, attacker, 'saboteur');
     const defHpLeft = SB.unitRemainingHp(state, defender);
-    if (sab && defender.shields > 0) {
+    const defShielded = defender.shields > 0;
+    if (sab && defShielded) {
       defender.shields = 0;
       state.log.push({ type: 'shieldsSabotaged', uid: defender.uid, sound: 'shield' });
     }
-    // Simultaneous: compute both, then apply both.
-    SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
-    SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
-    if (overwhelm && defender.shields === 0 && power > defHpLeft) {
+    if (item.firstStrike) {
+      // Attacker deals combat damage first; defender only retaliates if it lives.
+      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
+      if (SB.findUnit(state, defender.uid)) {
+        SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
+      }
+    } else {
+      // Simultaneous: compute both, then apply both.
+      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
+      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
+    }
+    const defeated = !SB.findUnit(state, defender.uid);
+    if (overwhelm && !defShielded && power > defHpLeft) {
       SB.damageBase(state, defender.owner, power - defHpLeft, 'overwhelm');
     }
+    if (defeated) {
+      const atkAlive = SB.findUnit(state, attacker.uid);
+      if (atkAlive) {
+        SB.fireTriggers(state, 'onDefeatUnit', atkAlive, {
+          sourceUid: atkAlive.uid, excess: Math.max(0, power - defHpLeft),
+        });
+      }
+    }
   }
+
+  // Shared attack entry for effect-driven attacks (Shoot First / Surprise Strike
+  // style). mods: {bonusPower, firstStrike, ready}.
+  SB.performAttack = function (state, attacker, target, mods) {
+    mods = mods || {};
+    if (mods.ready) attacker.exhausted = false;
+    attacker.exhausted = true;
+    state.log.push({ type: 'attackDeclared', attacker: attacker.uid, target: target, sound: 'attack' });
+    state.queue.push({ step: 'combatDamage', attackerUid: attacker.uid, target: target, player: attacker.owner,
+      bonusPower: mods.bonusPower || 0, firstStrike: !!mods.firstStrike });
+    SB.fireTriggers(state, 'onAttack', attacker, { sourceUid: attacker.uid, attackTarget: target });
+    if (target.kind === 'unit') {
+      const defender = SB.findUnit(state, target.uid);
+      if (defender) SB.fireTriggers(state, 'whenAttacked', defender, { sourceUid: defender.uid, attackerUid: attacker.uid });
+    }
+  };
+
+  // Legal attack targets for a unit (sentinel/saboteur rules) — shared with the
+  // action enumerator and effect-driven attacks.
+  SB.attackTargets = function (state, unit) {
+    const me = unit.owner;
+    const arena = SB.arenaOf(state, unit);
+    const enemies = state[arena].filter(function (e) { return e.owner !== me; });
+    const sentinels = enemies.filter(function (e) { return SB.hasKeyword(state, e, 'sentinel'); });
+    const sab = SB.hasKeyword(state, unit, 'saboteur');
+    const pool = (sentinels.length > 0 && !sab) ? sentinels : enemies;
+    const targets = pool.map(function (e) { return { kind: 'unit', uid: e.uid }; });
+    if (sentinels.length === 0 || sab) targets.push({ kind: 'base', player: SB.other(me) });
+    return targets;
+  };
+
+  SB.playCardWithMods = playCard; // ops.js queue steps play cards with modifiers
 
   // ---- queue driver -------------------------------------------------------
 
@@ -460,6 +550,9 @@
     state.locked = [false, false];
     state.initiativeClaimed = false;
     state.active = state.initiative;
+    state.defeatedThisPhase = [];
+    state.efx = {};
+    state.players.forEach(function (p) { p.playedThisPhase = []; p.eventsThisRound = 0; });
     state.log.push({ type: 'actionPhase', round: state.round });
   }
 
@@ -483,6 +576,11 @@
   function startRegroup(state) {
     state.phase = 'regroup';
     state.log.push({ type: 'regroup', round: state.round });
+    // "At the start of the regroup phase, defeat it" markers (temporary summons).
+    SB.allUnits(state).filter(function (u) { return u.defeatAtRegroup; }).forEach(function (u) {
+      SB.defeatUnit(state, u, {});
+    });
+    if (state.winner != null) return;
     SB.drawCards(state, 0, 2);
     SB.drawCards(state, 1, 2);
     if (state.winner != null) return;
@@ -510,7 +608,8 @@
   function finishRegroup(state) {
     // Ready everything, clear temp buffs, next round.
     SB.allUnits(state).forEach(function (u) {
-      u.exhausted = false;
+      if (u.stunned) { delete u.stunned; } // stunned units miss this ready step
+      else u.exhausted = false;
       u.temp = { power: 0, hp: 0 };
       delete u.tempKeywords;
     });

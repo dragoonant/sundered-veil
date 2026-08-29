@@ -4,7 +4,7 @@
 (function (SB) {
   'use strict';
   Object.assign(SB.cards, {
-  "sor-005": {"id":"sor-005","type":"leader","aspects":["villainy"],"traits":["tr12","tr32"],"unique":true,"deployCost":5,"leaderSide":{"abilities":[]},"deployedSide":{"arena":"ground","power":4,"hp":7}},
+  "sor-005": {"id":"sor-005","type":"leader","aspects":["heroism","vigilance"],"traits":["tr12","tr32"],"unique":true,"deployCost":5,"leaderSide":{"abilities":[]},"deployedSide":{"arena":"ground","power":4,"hp":7}},
   "sor-010": {"id":"sor-010","type":"leader","aspects":["aggression","villainy"],"traits":["tr12","tr17","tr35"],"unique":true,"deployCost":5,"leaderSide":{"abilities":[]},"deployedSide":{"arena":"ground","power":5,"hp":8}},
   "sor-021": {"id":"sor-021","type":"base","aspects":["vigilance"],"hp":30},
   "sor-023": {"id":"sor-023","type":"base","aspects":["command"],"hp":30},

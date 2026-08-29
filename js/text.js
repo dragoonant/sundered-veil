@@ -78,7 +78,51 @@
       return 'exhaust ' + (op.amount || 1) + ' of ' + who + ' resources';
     },
     resourceTopDeck: function () { return 'put the top card of your deck into play as a resource'; },
+    pickUnit: function (op) { return 'choose ' + describeTarget(op.target); },
+    dividedDamage: function (op) {
+      return 'deal ' + op.amount + ' damage divided as you choose among ' + scopeNoun(op.scope || { who: 'enemy', what: 'unit' }) + 's';
+    },
+    attackWith: function (op) {
+      let s = 'attack with ' + describeTarget(op.target);
+      const perks = [];
+      if (op.bonusPower) perks.push('it gets +' + op.bonusPower + '/+0 for this attack');
+      if (op.firstStrike) perks.push('it deals its combat damage first');
+      if (perks.length) s += ' — ' + perks.join(' and ');
+      return s;
+    },
+    peekTop: function (op) {
+      const verbs = { leave: 'leave it on top', bottom: 'put it on the bottom of your deck', discard: 'discard it', play: 'play it' };
+      return 'look at the top card of your deck — you may ' + op.modes.map(function (m) { return verbs[m]; }).join(', or ');
+    },
+    playFromHand: function (op) {
+      let s = 'play ' + filterNoun(op.filter) + ' from your hand';
+      const perks = [];
+      if (op.discount) perks.push('it costs ' + op.discount + ' less');
+      if (op.entersReady) perks.push('it enters play ready');
+      if (op.defeatAtRegroup) perks.push('defeat it at the start of the regroup phase');
+      if (perks.length) s += ' — ' + perks.join(', ');
+      return s;
+    },
+    mill: function (op) {
+      return 'discard ' + ((op.amount || 1) === 1 ? 'the top card' : 'the top ' + op.amount + ' cards') + ' of your deck';
+    },
+    binaryChoice: function (op) {
+      const chooser = op.chooser === 'opponent' ? 'your opponent chooses' : 'choose';
+      return chooser + ' one — ' + describeEffectList(op.a.effects) + '; or ' + describeEffectList(op.b.effects);
+    },
+    selfToResource: function () { return 'put this card into play as a resource'; },
+    healFull: function (op) { return 'heal all damage from ' + describeTarget(op.target); },
+    stunExhaust: function (op) { return 'exhaust ' + describeTarget(op.target) + ' — it cannot ready this round'; },
+    opponentMayReady: function () { return 'your opponent may ready one of their units'; },
   };
+
+  function describeEffectList(effects) {
+    return effects.map(function (op) {
+      const fn = opText[op.op];
+      if (!fn) throw new Error('no text for op ' + op.op);
+      return fn(op);
+    }).join(', then ');
+  }
 
   function scopeNoun(sel) {
     return describeTarget(sel).replace(/^a /, '');
@@ -104,6 +148,7 @@
     whenAttacked: 'When this unit is attacked',
     onCardPlayed: 'When you play another card',
     onUnitPlayed: 'When you play another unit',
+    onDefeatUnit: 'When this unit defeats an enemy unit in combat',
   };
 
   const conditionText = {
@@ -112,9 +157,35 @@
     },
     hasInitiative: function () { return 'if you have the initiative'; },
     baseDamaged: function () { return 'if your base is damaged'; },
+    enemyBaseDamaged: function () { return 'if the enemy base is damaged'; },
+    resourcesAtLeast: function (c) { return 'while you control ' + c.n + ' or more resources'; },
+    playedAspectThisPhase: function (c) {
+      return 'if you played a ' + (SB.names.aspects[c.aspect] || c.aspect) + ' card this phase';
+    },
+    playedCardThisPhase: function () { return 'if you played a card this phase'; },
+    friendlyDefeatedThisPhase: function () { return 'if a friendly unit was defeated this phase'; },
+    attachedIs: function () { return 'if attached to the named champion'; },
+    controlCard: function () { return 'if you control the named champion'; },
+    milledNonUnit: function () { return 'if the discarded card was not a unit'; },
+    saved: function (c) { return c.not ? 'if no target was chosen' : 'if a target was chosen'; },
+    selfDamaged: function () { return 'if this unit is damaged'; },
+    controlMoreUnitsThanOpponent: function () { return 'if you control more units than the opponent'; },
   };
 
   function describeAbility(ab) {
+    if (ab.trigger === 'combatConstant') {
+      // Keep in step with combatMods in engine.js.
+      const g = ab.grant || {};
+      const parts = [];
+      if (g.power || g.hp) parts.push('gets +' + (g.power || 0) + '/+' + (g.hp || 0));
+      if (g.powerPerSelfDamage) parts.push('gets +' + g.powerPerSelfDamage + '/+0 for each damage on it');
+      (g.keywords || []).forEach(function (kw) {
+        parts.push('gains ' + (SB.names.keywords[kw.k] || kw.k));
+      });
+      let when = 'While attacking';
+      if (ab.condition && ab.condition.if === 'defenderDamaged') when = 'While attacking a damaged unit';
+      return when + ', this unit ' + parts.join(' and ') + '.';
+    }
     if (ab.trigger === 'constant') {
       // Keep in step with SB.auraGrants in ops.js.
       const g = ab.grant;
