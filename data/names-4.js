@@ -1,0 +1,136 @@
+// names-4.js — display names, sets 7–8, tokens, traits, decks, UI (see THEME.md).
+(function (SB) {
+  'use strict';
+  const N = {
+    // ---- set 7 ----
+    'law-010': ['Sera Verin', 'Someone Who Loves You'],
+    'law-015': ['Magnate Gorvax', 'Crime Boss'],
+    'law-020': ['The Magnate’s Palace'],
+    'law-023': ['The Maw-Pit of Karkun'],
+    'law-035': ['Jem Skady', 'Ember Six'],
+    'law-037': ['Dax Farrow', 'Thaw-Sick'],
+    'law-038': ['Longear Lookout'],
+    'law-041': ['Nothing Left to Fear'],
+    'law-045': ['Garruk Orell', 'Ember Four'],
+    'law-047': ['Bram Stonehand', 'Good Fortune'],
+    'law-065': ['LM-4', 'Devious'],
+    'law-067': ['Wren Callas', 'Take the Next Chance'],
+    'law-104': ['Rook Baddi', 'Making a Diversion'],
+    'law-105': ['Sindra Kaz', 'Stone-Cold and Fearless'],
+    'law-108': ['Calder Voss', 'Eyes Open'],
+    'law-111': ['Sera’s Disguise'],
+    'law-119': ['The Longshot One', 'At Any Cost'],
+    'law-134': ['Majordomo Fibbs', 'Who Goes There?'],
+    'law-136': ['Syndicate Dust Runner'],
+    'law-142': ['Skyfall Lieutenant'],
+    'law-145': ['K4-Dee', 'Part of the Plan'],
+    'law-146': ['Massif Group Marines'],
+    'law-147': ['Jaunty Light Freighter'],
+    'law-152': ['Vox-3', 'Translation Protocol'],
+    'law-158': ['The Dune Queen', 'Over the Dust Sea'],
+    'law-163': ['The Maw of Karkun', 'Horror of the Dust Sea'],
+    'law-166': ['Putting a Team Together'],
+    'law-167': ['Common Cause'],
+    'law-168': ['Haymaker'],
+    'law-170': ['Double-Cross'],
+    'law-210': ['Snickering Grib', 'Cackling Companion'],
+    'law-211': ['Duskveil Patroller'],
+    'law-212': ['Beastkeeper Malko', 'Keeper of the Menagerie'],
+    'law-214': ['Rho Kade', 'For a Price'],
+    'law-215': ['The Gilded Wake', 'Auction House of the Stars'],
+    'law-216': ['Gorvax’s Ravener', 'Snack Time!'],
+    'law-231': ['Weeling Pirate'],
+    'law-244': ['Unmarked Credits'],
+    'law-246': ['The Axe Forgets'],
+    'law-249': ['Duskveil Cabalist'],
+    'law-252': ['The Kestrel Vow', 'In Pursuit'],
+    'law-254': ['Stalwart Fleet Trooper'],
+    // ---- set 8 ----
+    'ash-005': ['Kael Verin', 'I Can Save Him'],
+    'ash-015': ['Emperor Veyd', 'According to My Design'],
+    'ash-021': ['The Emperor’s Throne Vault'],
+    'ash-024': ['Serpentmere Bog'],
+    'ash-031': ['Vessa Ryl', 'Renegade General'],
+    'ash-036': ['Vress', 'From the Shadows'],
+    'ash-059': ['Sera Verin', 'Vigilant for Danger'],
+    'ash-060': ['Marshal Cobb', 'Let Me Handle This'],
+    'ash-061': ['Strike Team Vanguard'],
+    'ash-065': ['The Bastion Light', 'Heart of the Fleet'],
+    'ash-066': ['Kael’s Warden Riftblade', 'Forged by Hand'],
+    'ash-071': ['Battered Haulcraft'],
+    'ash-072': ['Doctor Skell', 'Dedicated to Research'],
+    'ash-078': ['Bulwark Rearguard'],
+    'ash-088': ['The Conflict Within'],
+    'ash-094': ['Prefect Jerrold', 'Redouble Our Efforts'],
+    'ash-096': ['Forest Patroller'],
+    'ash-097': ['Prefect Draul', 'Remnant Commander'],
+    'ash-099': ['Gundark-Class Carrier'],
+    'ash-101': ['The Great Crones', 'With Strange Magicks'],
+    'ash-103': ['Long Live the Hegemony'],
+    'ash-116': ['Mite Automa'],
+    'ash-118': ['8-Dee-8', 'The Magnate’s Majordomo'],
+    'ash-128': ['The Bolthole Five', 'New Concord Prison Ship'],
+    'ash-139': ['Hold Them Off'],
+    'ash-153': ['Green Leader', 'One Last Run'],
+    'ash-156': ['R5-Dif', 'Built for Adventure'],
+    'ash-158': ['Dax Farrow', 'It’ll Work'],
+    'ash-159': ['Alphabet Squadron Skybus', 'Quiet Devotion'],
+    'ash-162': ['Rash Action'],
+    'ash-163': ['Reckless Sacrifice'],
+    'ash-166': ['Brackle Warrior'],
+    'ash-184': ['Follow Me'],
+    'ash-189': ['The Emperor’s Messenger'],
+    'ash-191': ['Shen’s Fiend Fighter', 'Compact and Agile'],
+    'ash-193': ['The Emperor’s Champion'],
+    'ash-197': ['The Sovereign Maw', 'Doom of the Freeburn'],
+    'ash-198': ['Nowhere to Hide'],
+    'ash-199': ['There Is No Conflict'],
+    'ash-215': ['Flanking Dart Interceptor'],
+    'ash-218': ['Ferry Automa'],
+    'ash-221': ['Helix Starfighter'],
+    'ash-243': ['Lord Malvane', 'Meet Your Destiny'],
+    'ash-255': ['Joren Vale', 'You Were Right About Me'],
+    // ---- tokens ----
+    'tok-gv1': ['Battle Drone'],
+    'tok-gh2': ['Vatborn Trooper'],
+    'tok-sv1': ['Dart Fighter'],
+    'tok-sh2': ['Talonwing Fighter'],
+    'tok-spy': ['Informant'],
+    'tok-mnd': ['Clan Blade'],
+  };
+  Object.keys(N).forEach(function (id) {
+    SB.names.cards[id] = { name: N[id][0], subtitle: N[id][1] || null };
+  });
+
+  // ---- traits (tr ids from the generated trait map) ----
+  const TR = {
+    tr01: 'Armor', tr02: 'Bounty', tr03: 'Tracker', tr04: 'Capital Ship', tr05: 'Vatborn',
+    tr06: 'Condition', tr07: 'Beast', tr08: 'Automa', tr09: 'Brackle', tr10: 'Fighter',
+    tr11: 'Ashen Order', tr12: 'Attuned', tr13: 'Drifter', tr14: 'Gambit', tr15: 'Murkfolk',
+    tr16: 'Magnate', tr17: 'Hegemony', tr18: 'Innate', tr19: 'Seeker', tr20: 'Item',
+    tr21: 'Warden', tr22: 'Law', tr23: 'Learned', tr24: 'Riftblade', tr25: 'Vhalkar',
+    tr26: 'Lumeria', tr27: 'New Concord', tr28: 'Hexen', tr29: 'Official', tr30: 'Ace',
+    tr31: 'Plan', tr32: 'Freeburn', tr33: 'Concord', tr34: 'Severance', tr35: 'Umbra',
+    tr36: 'Embercell', tr37: 'Skimmer', tr38: 'Supply', tr39: 'Tactic', tr40: 'Tank',
+    tr41: 'Transport', tr42: 'Trick', tr43: 'Trooper', tr44: 'Sylvethi', tr45: 'Syndicate',
+    tr46: 'Vehicle', tr47: 'Strider', tr48: 'Weapon', tr49: 'Ursok',
+  };
+  Object.keys(TR).forEach(function (id) { SB.names.traits[id] = TR[id]; });
+
+  // ---- decks ----
+  const D = {
+    'deck-s1a': 'Kael’s Vanguard', 'deck-s1b': 'Malvane’s Fist',
+    'deck-s2a': 'The Oathbound', 'deck-s2b': 'Draul’s Remnant',
+    'deck-s3a': 'Tessa’s Pathfinders', 'deck-s3b': 'The Machine Hosts',
+    'deck-p4a': 'Farrow’s Gambit', 'deck-p4b': 'Kade’s Contract',
+    'deck-p5a': 'The Living Current', 'deck-p5b': 'Skarn’s Vengeance',
+    'deck-p6a': 'Solenne’s Resolve', 'deck-p6b': 'Veyd’s Design',
+    'deck-p7a': 'Sera’s Rescue', 'deck-p7b': 'Gorvax’s Court',
+    'deck-p8a': 'Kael’s Redemption', 'deck-p8b': 'The Emperor’s Design',
+  };
+  Object.keys(D).forEach(function (id) { SB.names.decks[id] = D[id]; });
+
+  // Power-token flavor: the Current.
+  SB.names.keywords.plot = 'Scheme';
+  SB.names.ui.forceToken = 'The Current';
+})(window.SB = window.SB || {});
