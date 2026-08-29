@@ -20,8 +20,8 @@
     return s;
   };
 
-  T.add('fuzz: 60 random fixture games run clean', function () {
-    for (let i = 0; i < 60; i++) {
+  T.add('fuzz: 200 random fixture games run clean', function () {
+    for (let i = 0; i < 200; i++) {
       const final = SB.randomGame(i % 2 ? 'fixtureA' : 'fixtureB', i % 2 ? 'fixtureB' : 'fixtureA', 'fz' + i);
       T.ok(final.winner === 0 || final.winner === 1 || final.winner === 'draw', 'has result');
     }
