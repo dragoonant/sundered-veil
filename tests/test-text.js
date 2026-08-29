@@ -37,6 +37,20 @@
     T.ok(/5 or more resources/.test(leaderA), 'deploy threshold stated');
   });
 
+  T.add('names: no two distinct cards collide on name+subtitle (art/slug gate)', function () {
+    const seen = {};
+    const dupes = [];
+    Object.keys(SB.cards).forEach(function (id) {
+      if (id.indexOf('fx-') === 0) return;
+      const n = SB.names.cards[id];
+      if (!n) return;
+      const slug = (n.name + '|' + (n.subtitle || '')).toLowerCase();
+      if (seen[slug]) dupes.push(slug + ' (' + seen[slug] + ' vs ' + id + ')');
+      else seen[slug] = id;
+    });
+    if (dupes.length) throw new Error('name collisions: ' + dupes.join(', '));
+  });
+
   T.add('names: every card and deck has a display name', function () {
     const missing = [];
     Object.keys(SB.cards).forEach(function (id) {

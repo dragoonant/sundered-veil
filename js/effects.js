@@ -256,6 +256,13 @@
     return state.efx[key] = state.efx[key] || {};
   };
 
+  // The else-branch of an op that resolved into nothing.
+  SB.execElse = function (state, item) {
+    if (item.op && item.op.else && item.op.else.length) {
+      SB.queueEffects(state, item.controller, item.op.else, item.ctx);
+    }
+  };
+
   // Amount resolution: literal op.amount, or op.amountRef into the invocation store
   // / combat context. Refs: 'lastHealed', 'excess', 'powerOf:<name>',
   // 'friendlyInTargetArena'.
@@ -324,10 +331,17 @@
   };
 
   // Central op execution: saved-target reuse + save-after + handler dispatch.
+  // Effect schema parity with CARD-GAME-LESSONS §1: an op may carry then:[ops]
+  // (queued after it resolves with a target or as an untargeted effect) and
+  // else:[ops] (queued instead when it fizzled for lack of a target / decline —
+  // that path is handled in drainQueue and applyQueueAction via SB.execElse).
   const DAMAGE_OPS = ['damage', 'damageAll', 'dividedDamage', 'damageOwnBase', 'damagePerExploited'];
   SB.execOp = function (state, item, target) {
     if (item.op.saveTargetAs && target) SB.efx(state, item.ctx)[item.op.saveTargetAs] = target;
     SB.ops[item.op.op](state, item, target);
+    if (item.op.then && item.op.then.length) {
+      SB.queueEffects(state, item.controller, item.op.then, item.ctx);
+    }
     // "When you deal non-combat damage" leader observers (fires once per damage op).
     if (DAMAGE_OPS.indexOf(item.op.op) >= 0 && SB.fireLeaderTrigger && !state._ncdGuard) {
       state._ncdGuard = true;
@@ -683,6 +697,7 @@
         }
         if (!t) {
           state.log.push({ type: 'fizzle', why: 'noSavedTarget', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+          SB.execElse(state, item);
           continue;
         }
         SB.execOp(state, item, t);
@@ -694,6 +709,7 @@
         if (cands.length === 0) {
           state.queue.shift();
           state.log.push({ type: 'fizzle', why: 'noTargets', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+          SB.execElse(state, item);
           continue;
         }
         if (cands.length === 1 && !op.target.optional) {

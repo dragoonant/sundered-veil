@@ -304,6 +304,21 @@
     return s;
   }
 
+  // One op plus its then/else continuations. Keep in step with SB.execOp/SB.execElse.
+  function describeOpChain(op) {
+    const fn = opText[op.op];
+    if (!fn) throw new Error('no text for op ' + op.op);
+    let s = fn(op);
+    if (op.target && op.target.optional) s = s.replace(/^([a-z]+)/, 'you may $1');
+    if (op.then && op.then.length) {
+      s += ' — if you do, ' + op.then.map(describeOpChain).join(', then ');
+    }
+    if (op.else && op.else.length) {
+      s += ' — if you don’t, ' + op.else.map(describeOpChain).join(', then ');
+    }
+    return s;
+  }
+
   const triggerText = {
     onPlay: 'When played',
     onAttack: 'On attack',
@@ -438,11 +453,7 @@
       return s;
     }
     const clauses = ab.effects.map(function (op) {
-      const fn = opText[op.op];
-      if (!fn) throw new Error('no text for op ' + op.op);
-      let s = fn(op);
-      if (op.target && op.target.optional) s = s.replace(/^([a-z]+)/, 'you may $1');
-      return s;
+      return describeOpChain(op);
     });
     let body = clauses.join(', then ');
     if (ab.condition) {

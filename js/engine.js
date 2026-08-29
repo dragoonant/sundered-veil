@@ -275,6 +275,7 @@
     if (action.index === -1) {
       expect(item.op.target && item.op.target.optional, action);
       state.log.push({ type: 'fizzle', why: 'declined', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+      SB.execElse(state, item);
       return;
     }
     const target = item.candidates[action.index];

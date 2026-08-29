@@ -211,3 +211,40 @@
     T.eq(SB.legalActions(s).length, 0, 'no actions after game over');
   });
 })(window.SB = window.SB || {});
+
+// then/else chaining (CARD-GAME-LESSONS §1 effect schema).
+(function (SB) {
+  'use strict';
+  const T = SB.test;
+
+  T.add('effects: then runs after resolution, else runs on fizzle', function () {
+    SB.cards['fx-chain'] = { id: 'fx-chain', type: 'event', cost: 1, aspects: [],
+      abilities: [{ trigger: 'onPlay', effects: [
+        { op: 'damage', amount: 1, target: { who: 'enemy', what: 'unit' },
+          then: [{ op: 'draw', amount: 1 }],
+          else: [{ op: 'healBase', amount: 2 }] }] }] };
+    SB.names.register('cards', 'fx-chain', { name: 'FX Chain' });
+
+    // Case 1: a target exists -> damage lands, then-branch draws.
+    let s = T.game('fixtureA', 'fixtureB', 'chain1');
+    const me = s.active, foe = SB.other(me);
+    const g = T.putOnBoard(s, foe, 'fx-gritty'); // 2/6 survives 1 damage
+    T.putInHand(s, me, 'fx-chain');
+    T.giveResources(s, me, 1);
+    const hand = s.players[me].hand.length;
+    s = T.act(s, { type: 'playCard', cardId: 'fx-chain' });
+    T.eq(SB.findUnit(s, g.uid).damage, 1, 'damage landed');
+    T.eq(s.players[me].hand.length, hand, 'played 1, drew 1 (then ran)');
+
+    // Case 2: no enemy units -> fizzle, else-branch heals the base.
+    let s2 = T.game('fixtureA', 'fixtureB', 'chain2');
+    const me2 = s2.active;
+    s2.players[me2].base.damage = 5;
+    T.putInHand(s2, me2, 'fx-chain');
+    T.giveResources(s2, me2, 1);
+    s2 = T.act(s2, { type: 'playCard', cardId: 'fx-chain' });
+    T.eq(s2.players[me2].base.damage, 3, 'else healed 2');
+
+    delete SB.cards['fx-chain'];
+  });
+})(window.SB = window.SB || {});

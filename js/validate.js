@@ -36,9 +36,14 @@
         return;
       }
       if (!Array.isArray(ab.effects) || ab.effects.length === 0) fail(id, 'ability without effects');
-      ab.effects.forEach(function (op) {
-        if (!SB.ops[op.op]) fail(id, 'unknown op ' + op.op);
-      });
+      function checkOps(ops) {
+        ops.forEach(function (op) {
+          if (!SB.ops[op.op]) fail(id, 'unknown op ' + op.op);
+          if (op.then) checkOps(op.then);
+          if (op.else) checkOps(op.else);
+        });
+      }
+      checkOps(ab.effects);
     });
   }
 
