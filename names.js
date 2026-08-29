@@ -20,7 +20,15 @@
       piloting: 'Piloting', coordinate: 'Coordinate', plot: 'Plot',
     },
     decks: {},     // deckId -> display name
-    ui: {},        // ui string id -> display
+    ui: {
+      round: 'Round', yourTurn: 'Your move', enemyTurn: 'Opponent is acting…',
+      initiative: 'Initiative', pass: 'Pass', claim: 'Take initiative',
+      deploy: 'Deploy leader', leaderAbility: 'Leader ability',
+      exhausted: 'Exhausted', ready: 'Ready', deployed: 'Deployed',
+      youWin: 'Victory!', youLose: 'Defeat', chooseTarget: 'Choose a target',
+      decline: 'Decline', keep: 'Keep hand', mulligan: 'Mulligan', undo: 'Undo',
+      newGame: 'New game',
+    },
     register: function (kind, id, value) { SB.names[kind][id] = value; },
     card: function (cardId) {
       const n = SB.names.cards[cardId];
