@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>tests</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<!-- Load order matters (dependency order). The headless runner (tools/run-tests.mjs)
+     parses these script tags — this list is the ONE source of truth for both entry
+     points. A new engine/data file must be added to BOTH tests.html and index.html. -->
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="names.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/state.js"></script>
+<script src="js/effects.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/text.js"></script>
+<script src="js/validate.js"></script>
+<script src="tests/harness.js"></script>
+<script src="tests/fixtures.js"></script>
+<script src="tests/test-engine-core.js"></script>
+<script src="tests/test-combat.js"></script>
+<script src="tests/test-text.js"></script>
+<script src="tests/test-fuzz.js"></script>
+<script>
+(function () {
+  SB.validateContent();
+  const lines = [];
+  SB.test.report = function (status, msg) { lines.push('[' + status + '] ' + msg); };
+  const res = SB.test.run({});
+  document.getElementById('out').textContent = lines.join('\n');
+  document.title = res.fail ? 'FAIL (' + res.fail + ')' : 'ok (' + res.pass + ')';
+})();
+</script>
+</body>
+</html>

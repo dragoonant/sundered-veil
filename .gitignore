@@ -1,0 +1,15 @@
+# API keys — never commit
+.hf_token
+.elevenlabs_key
+*.key
+
+# Full-resolution art masters stay out of the repo (downscaled copies go in art/)
+art-masters/
+
+# Import scratch — work packets may carry third-party names; never commit
+scratch/
+import-packets/
+
+# OS noise
+Thumbs.db
+desktop.ini
