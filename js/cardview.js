@@ -90,18 +90,22 @@
 
     // Layer 0: art + scrim (scrim is .card-art::after in CSS).
     const artWrap = el('div', 'card-art');
-    const proto = paintedProto(cardId);
-    const img = proto.cloneNode(false);
-    img.onerror = function () {
-      artProtos[cardId] = 'failed';
-      const holder = img.closest('[data-def-id]');
-      if (holder) {
-        const wrap = holder.querySelector('.card-art');
-        if (wrap) { wrap.replaceChild(svgFallback(cardId), img); }
-      }
-    };
-    if (artProtos[cardId] === 'failed') artWrap.appendChild(svgFallback(cardId));
-    else artWrap.appendChild(img);
+    // Once a card's art has 404'd its slot holds the 'failed' sentinel, not an <img>.
+    // Every later render of that card must take the SVG fallback path rather than try
+    // to clone a string — otherwise one missing art file breaks the whole board.
+    const failed = artProtos[cardId] === 'failed';
+    const img = failed ? null : paintedProto(cardId).cloneNode(false);
+    if (img) {
+      img.onerror = function () {
+        artProtos[cardId] = 'failed';
+        const holder = img.closest('[data-def-id]');
+        if (holder) {
+          const wrap = holder.querySelector('.card-art');
+          if (wrap) { wrap.replaceChild(svgFallback(cardId), img); }
+        }
+      };
+    }
+    artWrap.appendChild(img || svgFallback(cardId));
     root.appendChild(artWrap);
 
     // Layer 3 (top row): cost + aspect pips.

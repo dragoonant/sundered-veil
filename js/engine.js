@@ -239,7 +239,7 @@
         const reshuffled = SB.shuffled(all, rand);
         p.hand = reshuffled.slice(0, 6);
         p.deck = reshuffled.slice(6);
-        state.log.push({ type: 'mulligan', player: item.player });
+        SB.log(state, { type: 'mulligan', player: item.player });
       }
       return;
     }
@@ -254,7 +254,7 @@
       expect(action.handIndex >= 0 && action.handIndex < p.hand.length, action);
       const inst = p.hand.splice(action.handIndex, 1)[0];
       p.resources.push({ instance: inst, exhausted: false });
-      state.log.push({ type: 'resourced', player: item.player });
+      SB.log(state, { type: 'resourced', player: item.player });
       if (item.step === 'setupResources') {
         item.remaining = (item.remaining == null ? 2 : item.remaining) - 1;
         if (item.remaining <= 0) state.queue.shift();
@@ -274,7 +274,7 @@
     state.queue.shift();
     if (action.index === -1) {
       expect(item.op.target && item.op.target.optional, action);
-      state.log.push({ type: 'fizzle', why: 'declined', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+      SB.log(state, { type: 'fizzle', why: 'declined', cardId: item.ctx && item.ctx.cardId, fizzled: true });
       SB.execElse(state, item);
       return;
     }
@@ -291,7 +291,7 @@
 
     if (action.type === 'pass') {
       state.passed[me] = true;
-      state.log.push({ type: 'pass', player: me });
+      SB.log(state, { type: 'pass', player: me });
       advanceTurn(state);
       return;
     }
@@ -301,7 +301,7 @@
       state.initiativeClaimed = true;
       state.locked[me] = true;
       state.passed[me] = true;
-      state.log.push({ type: 'claimInitiative', player: me, sound: 'claim' });
+      SB.log(state, { type: 'claimInitiative', player: me, sound: 'claim' });
       advanceTurn(state);
       return;
     }
@@ -317,7 +317,7 @@
       const bc = SB.card(p.base.cardId);
       expect(bc.epicAbility && !p.baseEpicUsed, action);
       p.baseEpicUsed = true;
-      state.log.push({ type: 'baseEpic', player: me, sound: 'ability' });
+      SB.log(state, { type: 'baseEpic', player: me, sound: 'ability' });
       SB.queueEffects(state, me, bc.epicAbility.effects, { cardId: p.base.cardId });
     } else if (action.type === 'smuggle') {
       const r = p.resources[action.resourceIndex];
@@ -333,12 +333,12 @@
       p.resources[action.resourceIndex] = { instance: p.deck.shift(), exhausted: wasExhausted };
       p.playedThisPhase = p.playedThisPhase || [];
       p.playedThisPhase.push(inst.cardId);
-      state.log.push({ type: 'smuggled', player: me, cardId: inst.cardId, sound: 'play' });
+      SB.log(state, { type: 'smuggled', player: me, cardId: inst.cardId, sound: 'play' });
       if (card.type === 'unit') {
         const unit = SB.makeUnit(state, inst.cardId, me);
         unit.uid = inst.uid;
         state[card.arena].push(unit);
-        if (SB.hasKeyword(state, unit, 'shielded')) { unit.shields += 1; state.log.push({ type: 'shield', uid: unit.uid, sound: 'shield' }); }
+        if (SB.hasKeyword(state, unit, 'shielded')) { unit.shields += 1; SB.log(state, { type: 'shield', uid: unit.uid, sound: 'shield' }); }
         SB.fireTriggers(state, 'onSmuggle', unit, { sourceUid: unit.uid });
         if (SB.hasKeyword(state, unit, 'ambush')) {
           state.queue.push({ step: 'effect', controller: me, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
@@ -360,7 +360,7 @@
       const inst = { uid: state.nextUid++, cardId: p.leader.cardId, leaderPilot: true };
       p.leader.uid = inst.uid;
       bearer.upgrades.push(inst);
-      state.log.push({ type: 'deployLeaderPilot', player: me, cardId: p.leader.cardId, uid: bearer.uid, sound: 'deploy' });
+      SB.log(state, { type: 'deployLeaderPilot', player: me, cardId: p.leader.cardId, uid: bearer.uid, sound: 'deploy' });
       state.queue.push({ step: 'plotOffer', player: me });
       (lc.pilotSide.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'onDeployPilot') return;
@@ -374,7 +374,7 @@
       unit.exhausted = false; // leaders deploy ready
       p.leader.uid = unit.uid;
       state[leaderCard.deployedSide.arena || 'ground'].push(unit);
-      state.log.push({ type: 'deployLeader', player: me, cardId: p.leader.cardId, sound: 'deploy' });
+      SB.log(state, { type: 'deployLeader', player: me, cardId: p.leader.cardId, sound: 'deploy' });
       SB.fireTriggers(state, 'onDeploy', unit, { sourceUid: unit.uid });
       state.queue.push({ step: 'plotOffer', player: me });
     } else if (action.type === 'leaderAction') {
@@ -382,10 +382,10 @@
       expect(ab && ab.trigger === 'action' && !p.leader.exhausted, action);
       expect(!ab.gate || SB.checkCondition(state, me, ab.gate, {}), action);
       expect(!ab.forceCost || p.force, action);
-      if (ab.forceCost) { p.force = false; state.log.push({ type: 'forceUsed', player: me, sound: 'ability' }); }
+      if (ab.forceCost) { p.force = false; SB.log(state, { type: 'forceUsed', player: me, sound: 'ability' }); }
       payResources(state, me, ab.cost || 0);
       p.leader.exhausted = true;
-      state.log.push({ type: 'leaderAction', player: me, sound: 'ability' });
+      SB.log(state, { type: 'leaderAction', player: me, sound: 'ability' });
       SB.queueEffects(state, me, ab.effects, { cardId: p.leader.cardId, condition: ab.condition });
     } else if (action.type === 'unitAction') {
       const u = SB.findUnit(state, action.uid);
@@ -396,7 +396,7 @@
       payResources(state, me, ab.cost || 0);
       if (ab.oncePerRound) u.usedActionRound = state.round;
       if (!ab.noExhaust) u.exhausted = true;
-      state.log.push({ type: 'unitAction', uid: u.uid, sound: 'ability' });
+      SB.log(state, { type: 'unitAction', uid: u.uid, sound: 'ability' });
       SB.queueEffects(state, me, ab.effects, { sourceUid: u.uid, cardId: u.cardId, condition: ab.condition });
     } else {
       expect(false, action);
@@ -416,7 +416,7 @@
       p.credits -= 1;
       left -= 1;
       state.lastPaymentUsedCredit = true;
-      state.log.push({ type: 'creditSpent', player: playerIdx });
+      SB.log(state, { type: 'creditSpent', player: playerIdx });
     }
     SB.assert(left === 0, 'could not pay ' + n + ' resources');
   }
@@ -461,13 +461,13 @@
     else p.hand.splice(action.handIndex, 1);
     p.playedThisPhase = p.playedThisPhase || [];
     p.playedThisPhase.push(inst.cardId);
-    state.log.push({ type: 'playCard', player: me, cardId: inst.cardId, cost: cost, sound: 'play' });
+    SB.log(state, { type: 'playCard', player: me, cardId: inst.cardId, cost: cost, sound: 'play' });
 
     if (action.asPilot) {
       const bearer = SB.findUnit(state, action.attachTo);
       expect(bearer, action);
       bearer.upgrades.push(inst);
-      state.log.push({ type: 'attached', uid: bearer.uid, cardId: inst.cardId, sound: 'attach' });
+      SB.log(state, { type: 'attached', uid: bearer.uid, cardId: inst.cardId, sound: 'attach' });
       (card.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'onPlayAsPilot') return;
         SB.queueEffects(state, me, ab.effects, { sourceUid: bearer.uid, cardId: inst.cardId, condition: ab.condition });
@@ -483,7 +483,7 @@
       state[card.arena].push(unit);
       if (SB.hasKeyword(state, unit, 'shielded')) {
         unit.shields += 1;
-        state.log.push({ type: 'shield', uid: unit.uid, sound: 'shield' });
+        SB.log(state, { type: 'shield', uid: unit.uid, sound: 'shield' });
       }
       if (SB.hasKeyword(state, unit, 'ambush')) {
         // Ambush: may ready and attack immediately. Queue the option as a choice.
@@ -494,7 +494,7 @@
       if (p.echoNextOnPlay && (SB.card(inst.cardId).abilities || []).some(function (ab) { return ab.trigger === 'onPlay'; })) {
         delete p.echoNextOnPlay;
         SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid });
-        state.log.push({ type: 'echoedOnPlay', uid: unit.uid, notice: true });
+        SB.log(state, { type: 'echoedOnPlay', uid: unit.uid, notice: true });
       }
       if (action.exploit) {
         for (let k3 = 0; k3 < action.exploit; k3++) {
@@ -516,7 +516,7 @@
           return (SB.unitDef(u).staticFlags || []).indexOf('negateFirstEvent') >= 0;
         });
       if (negated) {
-        state.log.push({ type: 'fizzle', why: 'negated', cardId: inst.cardId, fizzled: true, notice: true });
+        SB.log(state, { type: 'fizzle', why: 'negated', cardId: inst.cardId, fizzled: true, notice: true });
       } else {
         SB.queueEffects(state, me, collectEffects(card), { cardId: inst.cardId, eventUid: inst.uid });
       }
@@ -524,7 +524,7 @@
       const target = SB.findUnit(state, action.attachTo);
       expect(target, action);
       target.upgrades.push(inst);
-      state.log.push({ type: 'attached', uid: target.uid, cardId: inst.cardId, sound: 'attach' });
+      SB.log(state, { type: 'attached', uid: target.uid, cardId: inst.cardId, sound: 'attach' });
       // Upgrade abilities that trigger when the upgrade itself is played resolve
       // in the context of the bearer.
       (card.abilities || []).forEach(function (ab) {
@@ -597,7 +597,7 @@
       const b = state.players[attacker.owner].base;
       const healed = Math.min(restore, b.damage);
       b.damage -= healed;
-      if (healed > 0) state.log.push({ type: 'baseHeal', player: attacker.owner, amount: healed, sound: 'heal' });
+      if (healed > 0) SB.log(state, { type: 'baseHeal', player: attacker.owner, amount: healed, sound: 'heal' });
     }
     if (item.target.kind === 'base') {
       (state.tempCombatMods || []).forEach(function (m) {
@@ -630,7 +630,7 @@
     const defShielded = defender.shields > 0;
     if (sab && defShielded) {
       defender.shields = 0;
-      state.log.push({ type: 'shieldsSabotaged', uid: defender.uid, sound: 'shield' });
+      SB.log(state, { type: 'shieldsSabotaged', uid: defender.uid, sound: 'shield' });
     }
     const alwaysFirst = (SB.unitDef(attacker).staticFlags || []).indexOf('firstStrike') >= 0 || mods.firstStrike;
     if (item.firstStrike || alwaysFirst) {
@@ -666,7 +666,7 @@
     mods = mods || {};
     if (mods.ready) attacker.exhausted = false;
     attacker.exhausted = true;
-    state.log.push({ type: 'attackDeclared', attacker: attacker.uid, target: target, sound: 'attack' });
+    SB.log(state, { type: 'attackDeclared', attacker: attacker.uid, target: target, sound: 'attack' });
     state.queue.push({ step: 'combatDamage', attackerUid: attacker.uid, target: target, player: attacker.owner,
       bonusPower: mods.bonusPower || 0, firstStrike: !!mods.firstStrike, bonusVsUnitsOnly: !!mods.bonusVsUnitsOnly });
     SB.fireTriggers(state, 'onAttack', attacker, { sourceUid: attacker.uid, attackTarget: target });
@@ -749,10 +749,10 @@
         for (let i = 0; i < res.length && left > 0; i++) {
           if (!res[i].exhausted) { res[i].exhausted = true; left--; }
         }
-        state.log.push({ type: 'resourcesSpent', player: itemStep.player, amount: itemStep.amount });
+        SB.log(state, { type: 'resourcesSpent', player: itemStep.player, amount: itemStep.amount });
       } else {
         u.exhausted = true;
-        state.log.push({ type: 'exhausted', uid: u.uid });
+        SB.log(state, { type: 'exhausted', uid: u.uid });
       }
     },
   };
@@ -772,7 +772,7 @@
       const key = String(itemStep.forUid);
       state.efxExploit[key] = state.efxExploit[key] || [];
       state.efxExploit[key].push(SB.unitPower(state, u));
-      state.log.push({ type: 'exploited', uid: u.uid, sound: 'destroy' });
+      SB.log(state, { type: 'exploited', uid: u.uid, sound: 'destroy' });
       SB.defeatUnit(state, u, {});
     },
   };
@@ -791,7 +791,7 @@
       const ab = SB.card(p.leader.cardId).leaderSide.abilities[itemStep.abilityIndex];
       if (itemStep.exhaustCost) {
         p.leader.exhausted = true;
-        state.log.push({ type: 'leaderAction', player: itemStep.player, sound: 'ability' });
+        SB.log(state, { type: 'leaderAction', player: itemStep.player, sound: 'ability' });
       }
       SB.queueEffects(state, itemStep.player, ab.effects,
         Object.assign({}, itemStep.ctx, { cardId: p.leader.cardId, condition: ab.condition }));
@@ -829,8 +829,8 @@
           baseDamageDealt: baseDealt,
           defenderDamagedNonLeader: !!(defUnit && defUnit.damage > 0 && SB.card(defUnit.cardId).type !== 'leader') };
         // Advantage tokens expire when their carrier's attack or defense ends.
-        if (atk && atk.advantage) { atk.advantage = 0; state.log.push({ type: 'advantageExpired', uid: atk.uid }); }
-        if (defUnit && defUnit.advantage) { defUnit.advantage = 0; state.log.push({ type: 'advantageExpired', uid: defUnit.uid }); }
+        if (atk && atk.advantage) { atk.advantage = 0; SB.log(state, { type: 'advantageExpired', uid: atk.uid }); }
+        if (defUnit && defUnit.advantage) { defUnit.advantage = 0; SB.log(state, { type: 'advantageExpired', uid: defUnit.uid }); }
         // "After this unit attacks" triggers, if the attacker survived.
         if (atk) SB.fireTriggers(state, 'onAttackEnds', atk, Object.assign({ sourceUid: atk.uid }, endCtx));
         // "When a friendly unit's attack ends" observers (leader + units).
@@ -879,7 +879,7 @@
   SB.ops.ambushAttack = function (state, item, target) {
     const unit = SB.findUnit(state, item.ctx.sourceUid);
     if (!unit || !target) return;
-    state.log.push({ type: 'ambush', uid: unit.uid, sound: 'attack' });
+    SB.log(state, { type: 'ambush', uid: unit.uid, sound: 'attack' });
     unit.exhausted = true;
     state.queue.unshift({ step: 'combatDamage', attackerUid: unit.uid, target: target, player: unit.owner });
     SB.fireTriggers(state, 'onAttack', unit, { sourceUid: unit.uid, attackTarget: target });
@@ -901,7 +901,7 @@
       p.playedThisPhase = []; p.eventsThisRound = 0; p.discounts = []; p.plotDiscount = 0;
       delete p.echoNextOnPlay;
     });
-    state.log.push({ type: 'actionPhase', round: state.round });
+    SB.log(state, { type: 'actionPhase', round: state.round });
   }
 
   function advanceTurn(state) {
@@ -923,7 +923,7 @@
 
   function startRegroup(state) {
     state.phase = 'regroup';
-    state.log.push({ type: 'regroup', round: state.round });
+    SB.log(state, { type: 'regroup', round: state.round });
     // "When the regroup phase starts" unit triggers.
     SB.allUnits(state).slice().forEach(function (u) {
       SB.fireTriggers(state, 'onRegroup', u, { sourceUid: u.uid });
@@ -944,7 +944,7 @@
           lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
         } else if (!SB.card(inst.cardId).token) state.players[original].discard.push(inst);
       });
-      state.log.push({ type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
+      SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
     });
     if (state.winner != null) return;
     SB.drawCards(state, 0, 2);

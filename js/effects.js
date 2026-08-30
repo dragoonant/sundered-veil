@@ -126,12 +126,12 @@
     if (amount <= 0) return;
     const base = state.players[playerIdx].base;
     base.damage += amount;
-    state.log.push({ type: 'baseDamage', player: playerIdx, amount: amount, why: why || null, sound: 'hit' });
+    SB.log(state, { type: 'baseDamage', player: playerIdx, amount: amount, why: why || null, sound: 'hit' });
     const hp = SB.card(base.cardId).hp;
     if (base.damage >= hp && state.winner == null) {
       state.winner = SB.other(playerIdx);
       state.phase = 'done';
-      state.log.push({ type: 'gameOver', winner: state.winner });
+      SB.log(state, { type: 'gameOver', winner: state.winner });
     }
   };
 
@@ -140,11 +140,11 @@
     if (amount <= 0) return;
     if (unit.shields > 0) {
       unit.shields -= 1;
-      state.log.push({ type: 'shieldPopped', uid: unit.uid, sound: 'shield' });
+      SB.log(state, { type: 'shieldPopped', uid: unit.uid, sound: 'shield' });
       return;
     }
     unit.damage += amount;
-    state.log.push({ type: 'unitDamage', uid: unit.uid, amount: amount, sound: 'hit' });
+    SB.log(state, { type: 'unitDamage', uid: unit.uid, amount: amount, sound: 'hit' });
     if (unit.damage >= SB.unitMaxHp(state, unit) && !SB.hasKeyword(state, unit, 'unkillableThisRound')) {
       SB.defeatUnit(state, unit, ctx);
     } else if (ctx && ctx.combat) SB.fireTriggers(state, 'whenCombatDamaged', unit, { sourceUid: unit.uid });
@@ -158,7 +158,7 @@
     list.splice(i, 1);
     state.defeatedThisPhase = state.defeatedThisPhase || [];
     state.defeatedThisPhase.push({ uid: unit.uid, owner: unit.owner, cardId: unit.cardId });
-    state.log.push({ type: 'defeated', uid: unit.uid, cardId: unit.cardId, sound: 'destroy' });
+    SB.log(state, { type: 'defeated', uid: unit.uid, cardId: unit.cardId, sound: 'destroy' });
     const card = SB.card(unit.cardId);
     const owner = state.players[unit.owner];
     if (card.type === 'leader') {
@@ -175,7 +175,7 @@
       if (inst.leaderPilot) {
         const lp = state.players[unit.owner].leader;
         lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-        state.log.push({ type: 'leaderReturned', player: unit.owner });
+        SB.log(state, { type: 'leaderReturned', player: unit.owner });
       } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
     });
     SB.fireTriggers(state, 'whenDefeated', unit, Object.assign({}, ctx, { sourceUid: unit.uid, combat: ctx && ctx.combat }));
@@ -199,11 +199,11 @@
     for (let i = 0; i < n; i++) {
       if (p.deck.length === 0) {
         // Decked: 3 damage to your base per card you fail to draw.
-        state.log.push({ type: 'deckedOut', player: playerIdx });
+        SB.log(state, { type: 'deckedOut', player: playerIdx });
         SB.damageBase(state, playerIdx, 3, 'decked');
       } else {
         p.hand.push(p.deck.shift());
-        state.log.push({ type: 'draw', player: playerIdx });
+        SB.log(state, { type: 'draw', player: playerIdx });
       }
     }
   };
@@ -545,14 +545,14 @@
         const b = state.players[target.player].base;
         healed = Math.min(amt, b.damage);
         b.damage -= healed;
-        if (healed > 0) state.log.push({ type: 'baseHeal', player: target.player, amount: healed, sound: 'heal' });
+        if (healed > 0) SB.log(state, { type: 'baseHeal', player: target.player, amount: healed, sound: 'heal' });
       } else {
         const u = SB.findUnit(state, target.uid);
         if (u) {
           healed = Math.min(amt, u.damage);
           u.damage -= healed;
           if (healed > 0) {
-            state.log.push({ type: 'unitHeal', uid: u.uid, amount: healed, sound: 'heal' });
+            SB.log(state, { type: 'unitHeal', uid: u.uid, amount: healed, sound: 'heal' });
             SB.fireTriggers(state, 'whenHealed', u, { sourceUid: u.uid, healedAmount: healed });
           }
         }
@@ -572,7 +572,7 @@
     healFull: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
       if (u && u.damage > 0) {
-        state.log.push({ type: 'unitHeal', uid: u.uid, amount: u.damage, sound: 'heal' });
+        SB.log(state, { type: 'unitHeal', uid: u.uid, amount: u.damage, sound: 'heal' });
         u.damage = 0;
       }
     },
@@ -582,19 +582,19 @@
       if (!u) return;
       u.exhausted = true;
       u.stunned = true;
-      state.log.push({ type: 'stunned', uid: u.uid, sound: 'ability' });
+      SB.log(state, { type: 'stunned', uid: u.uid, sound: 'ability' });
     },
     opponentMayReady: function (state, item) {
       state.queue.unshift({ step: 'mayReadyOwn', player: SB.other(item.controller) });
     },
     shield: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
-      if (u) { u.shields += (item.op.amount || 1); state.log.push({ type: 'shield', uid: u.uid, sound: 'shield' }); }
+      if (u) { u.shields += (item.op.amount || 1); SB.log(state, { type: 'shield', uid: u.uid, sound: 'shield' }); }
     },
     experience: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
       const amt = item.op.amountRef ? SB.resolveAmount(state, item, target) : (item.op.amount || 1);
-      if (u && amt > 0) { u.experience += amt; state.log.push({ type: 'experience', uid: u.uid, amount: amt, sound: 'buff' }); }
+      if (u && amt > 0) { u.experience += amt; SB.log(state, { type: 'experience', uid: u.uid, amount: amt, sound: 'buff' }); }
     },
     buffTemp: function (state, item, target) {
       // Lasts for the round; cleared in regroup. A negative HP change can defeat.
@@ -602,7 +602,7 @@
       if (u) {
         u.temp.power += (item.op.power || 0);
         u.temp.hp += (item.op.hp || 0);
-        state.log.push({ type: 'buff', uid: u.uid, power: item.op.power || 0, hp: item.op.hp || 0, sound: 'buff' });
+        SB.log(state, { type: 'buff', uid: u.uid, power: item.op.power || 0, hp: item.op.hp || 0, sound: 'buff' });
         if (SB.unitRemainingHp(state, u) <= 0 && !SB.hasKeyword(state, u, 'unkillableThisRound')) {
           SB.defeatUnit(state, u, item.ctx);
         }
@@ -613,18 +613,18 @@
       if (!u) return;
       if (u.owner !== item.controller &&
           (SB.unitDef(u).staticFlags || []).indexOf('noEnemyDefeatReturn') >= 0) {
-        state.log.push({ type: 'fizzle', why: 'immune', fizzled: true });
+        SB.log(state, { type: 'fizzle', why: 'immune', fizzled: true });
         return;
       }
       SB.defeatUnit(state, u, item.ctx);
     },
     exhaust: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
-      if (u && !u.exhausted) { u.exhausted = true; state.log.push({ type: 'exhausted', uid: u.uid }); }
+      if (u && !u.exhausted) { u.exhausted = true; SB.log(state, { type: 'exhausted', uid: u.uid }); }
     },
     ready: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
-      if (u && u.exhausted && !u.stunned) { u.exhausted = false; state.log.push({ type: 'readied', uid: u.uid }); }
+      if (u && u.exhausted && !u.stunned) { u.exhausted = false; SB.log(state, { type: 'readied', uid: u.uid }); }
     },
     returnHand: function (state, item, target) {
       const u = SB.findUnit(state, target.uid);
@@ -632,7 +632,7 @@
       SB.efx(state, item.ctx).returnedCost = SB.card(u.cardId).cost;
       if (u.owner !== item.controller &&
           (SB.unitDef(u).staticFlags || []).indexOf('noEnemyDefeatReturn') >= 0) {
-        state.log.push({ type: 'fizzle', why: 'immune', fizzled: true });
+        SB.log(state, { type: 'fizzle', why: 'immune', fizzled: true });
         return;
       }
       const arena = SB.arenaOf(state, u);
@@ -651,7 +651,7 @@
           lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
         } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
       });
-      state.log.push({ type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
+      SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
     },
   };
 
@@ -670,13 +670,13 @@
       if (item.ctx && item.ctx.condition &&
           !SB.checkCondition(state, item.controller, item.ctx.condition, item.ctx)) {
         state.queue.shift();
-        state.log.push({ type: 'fizzle', why: 'condition', cardId: item.ctx.cardId, fizzled: true });
+        SB.log(state, { type: 'fizzle', why: 'condition', cardId: item.ctx.cardId, fizzled: true });
         continue;
       }
       // Per-op condition (in addition to the ability-level one).
       if (op.condition && !SB.checkCondition(state, item.controller, op.condition, item.ctx || {})) {
         state.queue.shift();
-        state.log.push({ type: 'fizzle', why: 'condition', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+        SB.log(state, { type: 'fizzle', why: 'condition', cardId: item.ctx && item.ctx.cardId, fizzled: true });
         continue;
       }
       const handler = SB.ops[op.op];
@@ -696,7 +696,7 @@
           t = SB.efx(state, item.ctx)[op.useTarget];
         }
         if (!t) {
-          state.log.push({ type: 'fizzle', why: 'noSavedTarget', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+          SB.log(state, { type: 'fizzle', why: 'noSavedTarget', cardId: item.ctx && item.ctx.cardId, fizzled: true, notice: true });
           SB.execElse(state, item);
           continue;
         }
@@ -708,12 +708,22 @@
         const cands = SB.selectorCandidates(state, item.controller, op.target, item.ctx || {});
         if (cands.length === 0) {
           state.queue.shift();
-          state.log.push({ type: 'fizzle', why: 'noTargets', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+          SB.log(state, { type: 'fizzle', why: 'noTargets', cardId: item.ctx && item.ctx.cardId, fizzled: true, notice: true });
           SB.execElse(state, item);
           continue;
         }
         if (cands.length === 1 && !op.target.optional) {
+          // DEVIATION from spec §4: the engine still auto-resolves a sole forced target
+          // rather than raising a confirm-only prompt (that would make the AI and every
+          // fuzz game pay for a click that decides nothing). The knowledge the spec is
+          // protecting is restored by announcing WHAT was hit — a notice line the log
+          // panel highlights and hangs a card preview on.
           state.queue.shift();
+          SB.log(state, { type: 'autoTarget', sourceCardId: item.ctx && item.ctx.cardId,
+            sourceUid: item.ctx && item.ctx.sourceUid != null ? item.ctx.sourceUid : null,
+            uid: cands[0].kind === 'unit' ? cands[0].uid : null,
+            targetPlayer: cands[0].kind === 'base' ? cands[0].player : null,
+            notice: true });   // SB.log stamps cardId from uid: the TARGET is the news
           SB.execOp(state, item, cands[0]);
           continue;
         }

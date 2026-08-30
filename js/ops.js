@@ -123,7 +123,7 @@
     units.forEach(function (u) {
       if (SB.findUnit(state, u.uid) && SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, item.ctx);
     });
-    state.log.push({ type: 'buffAll', power: item.op.power || 0, hp: item.op.hp || 0, sound: 'buff' });
+    SB.log(state, { type: 'buffAll', power: item.op.power || 0, hp: item.op.hp || 0, sound: 'buff' });
   };
 
   // Choice-only op: pick a unit and save it for later ops (via saveTargetAs).
@@ -193,7 +193,7 @@
       p.discard.push(inst);
       types.push(SB.card(inst.cardId).type);
       costs.push(SB.card(inst.cardId).cost);
-      state.log.push({ type: 'milled', player: item.controller, cardId: inst.cardId });
+      SB.log(state, { type: 'milled', player: item.controller, cardId: inst.cardId });
     }
     SB.efx(state, item.ctx).milledTypes = types;
     SB.efx(state, item.ctx).milledCosts = costs;
@@ -213,7 +213,7 @@
     if (i < 0) return;
     const inst = p.discard.splice(i, 1)[0];
     p.resources.push({ instance: inst, exhausted: false });
-    state.log.push({ type: 'resourced', player: item.controller });
+    SB.log(state, { type: 'resourced', player: item.controller });
   };
 
   // Give a keyword until end of round (cleared in regroup with temp stats).
@@ -222,7 +222,7 @@
     if (!u) return;
     u.tempKeywords = u.tempKeywords || [];
     u.tempKeywords.push(item.op.k);
-    state.log.push({ type: 'gainedKeyword', uid: u.uid, k: item.op.k, sound: 'buff' });
+    SB.log(state, { type: 'gainedKeyword', uid: u.uid, k: item.op.k, sound: 'buff' });
   };
 
   // Opponent discards N cards of THEIR choice (queued choice for that player).
@@ -247,7 +247,7 @@
       const idx = Math.floor(rand() * p.hand.length);
       const inst = p.hand.splice(idx, 1)[0];
       p.discard.push(inst);
-      state.log.push({ type: 'discarded', player: who, cardId: inst.cardId, sound: 'discard' });
+      SB.log(state, { type: 'discarded', player: who, cardId: inst.cardId, sound: 'discard' });
     }
   };
 
@@ -258,7 +258,7 @@
       const card = SB.card(item.op.token);
       if (item.op.ready) unit.exhausted = false;
       state[card.arena].push(unit);
-      state.log.push({ type: 'tokenCreated', uid: unit.uid, cardId: item.op.token, sound: 'deploy' });
+      SB.log(state, { type: 'tokenCreated', uid: unit.uid, cardId: item.op.token, sound: 'deploy' });
     }
   };
 
@@ -278,7 +278,7 @@
     state[arena].splice(state[arena].indexOf(victim), 1);
     captor.captured = captor.captured || [];
     captor.captured.push({ uid: victim.uid, cardId: victim.cardId, owner: victim.owner, upgrades: victim.upgrades });
-    state.log.push({ type: 'captured', uid: victim.uid, cardId: victim.cardId, by: captor.uid, sound: 'capture' });
+    SB.log(state, { type: 'captured', uid: victim.uid, cardId: victim.cardId, by: captor.uid, sound: 'capture' });
   };
 
   // Heal own base.
@@ -286,8 +286,8 @@
     const b = state.players[item.controller].base;
     const healed = Math.min(item.op.amount, b.damage);
     b.damage -= healed;
-    if (healed > 0) state.log.push({ type: 'baseHeal', player: item.controller, amount: healed, sound: 'heal' });
-    else state.log.push({ type: 'fizzle', why: 'noDamage', fizzled: true });
+    if (healed > 0) SB.log(state, { type: 'baseHeal', player: item.controller, amount: healed, sound: 'heal' });
+    else SB.log(state, { type: 'fizzle', why: 'noDamage', fizzled: true });
   };
 
   // Deal damage to your own base (costs of powerful villain effects).
@@ -335,7 +335,7 @@
     for (let i = 0; i < res.length && left > 0; i++) {
       if (res[i].exhausted) { res[i].exhausted = false; left--; }
     }
-    state.log.push({ type: 'resourcesReadied', player: item.controller, amount: (item.op.amount || 1) - left });
+    SB.log(state, { type: 'resourcesReadied', player: item.controller, amount: (item.op.amount || 1) - left });
   };
 
   O.exhaustResource = function (state, item) {
@@ -345,16 +345,16 @@
     for (let i = 0; i < res.length && left > 0; i++) {
       if (!res[i].exhausted) { res[i].exhausted = true; left--; }
     }
-    state.log.push({ type: 'resourcesExhausted', player: who, amount: (item.op.amount || 1) - left });
+    SB.log(state, { type: 'resourcesExhausted', player: who, amount: (item.op.amount || 1) - left });
   };
 
   // Put the top card of your deck into play as a resource (economy ramp).
   O.resourceTopDeck = function (state, item) {
     const p = state.players[item.controller];
-    if (p.deck.length === 0) { state.log.push({ type: 'fizzle', why: 'emptyDeck', fizzled: true }); return; }
+    if (p.deck.length === 0) { SB.log(state, { type: 'fizzle', why: 'emptyDeck', fizzled: true }); return; }
     const inst = p.deck.shift();
     p.resources.push({ instance: inst, exhausted: item.op.exhausted !== false });
-    state.log.push({ type: 'resourced', player: item.controller });
+    SB.log(state, { type: 'resourced', player: item.controller });
   };
 
   // Defeat a non-unique upgrade on the (indirectly damaged) unit.
@@ -366,7 +366,7 @@
     if (idx < 0) return;
     const inst = u.upgrades.splice(idx, 1)[0];
     if (!SB.card(inst.cardId).token) state.players[u.owner].discard.push(inst);
-    state.log.push({ type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
+    SB.log(state, { type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
     if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
   };
 
@@ -380,7 +380,7 @@
         p.discard.push(inst);
         const c = SB.card(inst.cardId).cost;
         if (c != null && c % 2 === 1) odd++;
-        state.log.push({ type: 'milled', player: pi, cardId: inst.cardId });
+        SB.log(state, { type: 'milled', player: pi, cardId: inst.cardId });
       }
     });
     SB.efx(state, item.ctx)[item.op.saveAs || 'odds'] = odd;
@@ -393,7 +393,7 @@
       const u = SB.findUnit(state, c.uid);
       if (u && u.exhausted && !u.stunned && !SB.isJailed(state, u)) {
         u.exhausted = false;
-        state.log.push({ type: 'readied', uid: u.uid });
+        SB.log(state, { type: 'readied', uid: u.uid });
       }
     });
   };
@@ -403,12 +403,12 @@
   O.spendResources = function (state, item) {
     const res = state.players[item.controller].resources;
     const ready = res.filter(function (x) { return !x.exhausted; }).length;
-    if (ready < item.op.amount) { state.log.push({ type: 'fizzle', why: 'cantPay', fizzled: true }); return; }
+    if (ready < item.op.amount) { SB.log(state, { type: 'fizzle', why: 'cantPay', fizzled: true }); return; }
     let left = item.op.amount;
     for (let i = 0; i < res.length && left > 0; i++) {
       if (!res[i].exhausted) { res[i].exhausted = true; left--; }
     }
-    state.log.push({ type: 'resourcesSpent', player: item.controller, amount: item.op.amount });
+    SB.log(state, { type: 'resourcesSpent', player: item.controller, amount: item.op.amount });
   };
 
   // Move this unit to the other arena.
@@ -420,7 +420,7 @@
     if (from === to) return;
     state[from].splice(state[from].indexOf(u), 1);
     state[to].push(u);
-    state.log.push({ type: 'movedArena', uid: u.uid, to: to });
+    SB.log(state, { type: 'movedArena', uid: u.uid, to: to });
   };
 
   // Take control of an enemy unit (optionally returned to owner at next regroup).
@@ -431,7 +431,7 @@
     u.owner = item.controller;
     if (item.op.ready && u.exhausted && !u.stunned) u.exhausted = false;
     if (item.op.returnAtRegroup) u.commandeered = { originalOwner: original };
-    state.log.push({ type: 'controlTaken', uid: u.uid, by: item.controller, sound: 'claim', notice: true });
+    SB.log(state, { type: 'controlTaken', uid: u.uid, by: item.controller, sound: 'claim', notice: true });
   };
 
   // Reveal the top card of the deck (public information effect).
@@ -439,19 +439,19 @@
     const p = state.players[item.controller];
     if (p.deck.length === 0) return;
     SB.efx(state, item.ctx).revealedCost = SB.card(p.deck[0].cardId).cost;
-    state.log.push({ type: 'revealedTop', player: item.controller, cardId: p.deck[0].cardId, notice: true });
+    SB.log(state, { type: 'revealedTop', player: item.controller, cardId: p.deck[0].cardId, notice: true });
   };
 
   // Force token economy: one token per player, kept until spent.
   O.gainForce = function (state, item) {
     const p = state.players[item.controller];
-    if (!p.force) { p.force = true; state.log.push({ type: 'forceGained', player: item.controller, sound: 'buff' }); }
+    if (!p.force) { p.force = true; SB.log(state, { type: 'forceGained', player: item.controller, sound: 'buff' }); }
   };
   O.useForce = function (state, item) {
     const p = state.players[item.controller];
-    if (!p.force) { state.log.push({ type: 'fizzle', why: 'noForce', fizzled: true }); return; }
+    if (!p.force) { SB.log(state, { type: 'fizzle', why: 'noForce', fizzled: true }); return; }
     p.force = false;
-    state.log.push({ type: 'forceUsed', player: item.controller, sound: 'ability' });
+    SB.log(state, { type: 'forceUsed', player: item.controller, sound: 'ability' });
   };
 
   // Defeat every unit matched by scope.
@@ -466,7 +466,7 @@
     const u = SB.findUnit(state, target.uid);
     if (!u || u.experience <= 0) return;
     u.experience -= 1;
-    state.log.push({ type: 'experienceRemoved', uid: u.uid });
+    SB.log(state, { type: 'experienceRemoved', uid: u.uid });
     if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, item.ctx);
   };
 
@@ -477,7 +477,7 @@
     });
     if (!cd) return;
     cd.bonusPower = (cd.bonusPower || 0) + item.op.amount;
-    state.log.push({ type: 'attackModified', uid: item.ctx.attackerUid });
+    SB.log(state, { type: 'attackModified', uid: item.ctx.attackerUid });
   };
 
   // Exhaust any number of units with combined cost <= budget.
@@ -500,7 +500,7 @@
       const u = SB.findUnit(state, action.uid);
       if (!u || u.exhausted) return;
       u.exhausted = true;
-      state.log.push({ type: 'exhausted', uid: u.uid });
+      SB.log(state, { type: 'exhausted', uid: u.uid });
       const rest = itemStep.budget - (SB.card(u.cardId).cost || 0);
       if (rest > 0) state.queue.unshift({ step: 'exhaustBudgetPick', player: itemStep.player, budget: rest });
     },
@@ -525,7 +525,7 @@
         if (!res[i].exhausted) { res[i].exhausted = true; break; }
       }
       const u = SB.findUnit(state, itemStep.uid);
-      if (u) { u.experience += 1; state.log.push({ type: 'experience', uid: u.uid, sound: 'buff' }); }
+      if (u) { u.experience += 1; SB.log(state, { type: 'experience', uid: u.uid, sound: 'buff' }); }
       state.queue.unshift({ step: 'payXpPick', player: itemStep.player, left: itemStep.left - 1, uid: itemStep.uid });
     },
   };
@@ -557,7 +557,7 @@
       const p = state.players[itemStep.player];
       const inst = p.discard.splice(action.index, 1)[0];
       p.deck.push(inst);
-      state.log.push({ type: 'bottomedCard', player: itemStep.player });
+      SB.log(state, { type: 'bottomedCard', player: itemStep.player });
       state.queue.unshift({ step: 'bottomDiscardPick', player: itemStep.player,
         filter: itemStep.filter, left: itemStep.left - 1, saveCountAs: itemStep.saveCountAs,
         count: itemStep.count + 1, ctx: itemStep.ctx });
@@ -567,7 +567,7 @@
   // Grant "echo the next When Played ability" to the controller this phase.
   O.echoNextOnPlay = function (state, item) {
     state.players[item.controller].echoNextOnPlay = true;
-    state.log.push({ type: 'echoArmed', player: item.controller, sound: 'buff' });
+    SB.log(state, { type: 'echoArmed', player: item.controller, sound: 'buff' });
   };
 
   // Give an experience token to every unit matched by scope.
@@ -575,7 +575,7 @@
     const cands = SB.selectorCandidates(state, item.controller, item.op.scope, item.ctx || {});
     cands.forEach(function (c) {
       const u = SB.findUnit(state, c.uid);
-      if (u) { u.experience += 1; state.log.push({ type: 'experience', uid: u.uid, sound: 'buff' }); }
+      if (u) { u.experience += 1; SB.log(state, { type: 'experience', uid: u.uid, sound: 'buff' }); }
     });
   };
 
@@ -585,13 +585,13 @@
     if (!u) return;
     const n = SB.resolveAmount(state, item, target) || 0;
     u.temp.power += n; u.temp.hp += n;
-    state.log.push({ type: 'buff', uid: u.uid, power: n, hp: n, sound: 'buff' });
+    SB.log(state, { type: 'buff', uid: u.uid, power: n, hp: n, sound: 'buff' });
   };
 
   O.gainCredits = function (state, item) {
     const p = state.players[item.controller];
     p.credits = (p.credits || 0) + (item.op.amount || 1);
-    state.log.push({ type: 'creditsGained', player: item.controller, amount: item.op.amount || 1, sound: 'claim' });
+    SB.log(state, { type: 'creditsGained', player: item.controller, amount: item.op.amount || 1, sound: 'claim' });
   };
 
   // Buff a unit +1/+1 per distinct aspect it has (this round).
@@ -600,7 +600,7 @@
     if (!u) return;
     const n = new Set(SB.card(u.cardId).aspects || []).size;
     u.temp.power += n; u.temp.hp += n;
-    state.log.push({ type: 'buff', uid: u.uid, power: n, hp: n, sound: 'buff' });
+    SB.log(state, { type: 'buff', uid: u.uid, power: n, hp: n, sound: 'buff' });
   };
 
   // Look at top 2, bottom any number, keep the rest on top in chosen order.
@@ -632,7 +632,7 @@
         bottomSecond: [[a], [b]], bottomBoth: [[], [a, b]] }[action.mode];
       put[0].filter(Boolean).reverse().forEach(function (x) { d.unshift(x); });
       put[1].filter(Boolean).forEach(function (x) { d.push(x); });
-      state.log.push({ type: 'arrangedTop', player: itemStep.player });
+      SB.log(state, { type: 'arrangedTop', player: itemStep.player });
     },
   };
 
@@ -657,7 +657,7 @@
       const inst = p.discard.splice(action.index, 1)[0];
       p.deck.push(inst);
       if (itemStep.ctx) SB.efx(state, itemStep.ctx)[itemStep.saveAs] = SB.card(inst.cardId).power || 0;
-      state.log.push({ type: 'bottomedCard', player: itemStep.player });
+      SB.log(state, { type: 'bottomedCard', player: itemStep.player });
     },
   };
 
@@ -696,14 +696,14 @@
       if (!mine || !theirs) return;
       const a = mine.owner, b = theirs.owner;
       mine.owner = b; theirs.owner = a;
-      state.log.push({ type: 'controlExchanged', a: mine.uid, b: theirs.uid, notice: true });
+      SB.log(state, { type: 'controlExchanged', a: mine.uid, b: theirs.uid, notice: true });
       const cm = SB.card(mine.cardId).cost || 0, ct = SB.card(theirs.cardId).cost || 0;
       if (cm !== ct) {
         // Whoever received the cheaper unit gains the difference in credits.
         const receiverOfCheaper = cm < ct ? b : a;
         const diff = Math.abs(cm - ct);
         state.players[receiverOfCheaper].credits = (state.players[receiverOfCheaper].credits || 0) + diff;
-        state.log.push({ type: 'creditsGained', player: receiverOfCheaper, amount: diff, sound: 'claim' });
+        SB.log(state, { type: 'creditsGained', player: receiverOfCheaper, amount: diff, sound: 'claim' });
       }
     },
   };
@@ -749,7 +749,7 @@
       const p = state.players[who];
       if (p.deck.length === 0) return;
       const top = p.deck[0];
-      state.log.push({ type: 'revealedTop', player: who, cardId: top.cardId, notice: true });
+      SB.log(state, { type: 'revealedTop', player: who, cardId: top.cardId, notice: true });
       const card = SB.card(top.cardId);
       if (card.type !== 'unit' && card.type !== 'event') return;
       state.queue.unshift({ step: 'auctionPlay', player: who, cardId: top.cardId, cost: card.cost || 0 });
@@ -774,7 +774,7 @@
       const other = SB.other(itemStep.player);
       if (itemStep.cost > 0) {
         state.players[other].credits = (state.players[other].credits || 0) + itemStep.cost;
-        state.log.push({ type: 'creditsGained', player: other, amount: itemStep.cost, sound: 'claim' });
+        SB.log(state, { type: 'creditsGained', player: other, amount: itemStep.cost, sound: 'claim' });
       }
     },
   };
@@ -786,13 +786,13 @@
     const n = item.op.amountRef ? SB.resolveAmount(state, item, target) : (item.op.amount || 1);
     if (n <= 0) return;
     u.advantage = (u.advantage || 0) + n;
-    state.log.push({ type: 'advantage', uid: u.uid, amount: n, sound: 'buff' });
+    SB.log(state, { type: 'advantage', uid: u.uid, amount: n, sound: 'buff' });
   };
   O.advantageAll = function (state, item) {
     const cands = SB.selectorCandidates(state, item.controller, item.op.scope, item.ctx || {});
     cands.forEach(function (c) {
       const u = SB.findUnit(state, c.uid);
-      if (u) { u.advantage = (u.advantage || 0) + (item.op.amount || 1); state.log.push({ type: 'advantage', uid: u.uid, amount: item.op.amount || 1, sound: 'buff' }); }
+      if (u) { u.advantage = (u.advantage || 0) + (item.op.amount || 1); SB.log(state, { type: 'advantage', uid: u.uid, amount: item.op.amount || 1, sound: 'buff' }); }
     });
   };
 
@@ -823,7 +823,7 @@
       });
       if (lent.length) {
         u.tempAbilities = (u.tempAbilities || []).concat(lent);
-        state.log.push({ type: 'supported', uid: u.uid, by: src.uid, sound: 'buff' });
+        SB.log(state, { type: 'supported', uid: u.uid, by: src.uid, sound: 'buff' });
       }
       state.queue.unshift({ step: 'attackTargetChoice', player: itemStep.player, uid: u.uid,
         bonusPower: 0, firstStrike: false, ready: false, optional: false });
@@ -874,7 +874,7 @@
     const inst = owner.discard.splice(i, 1)[0];
     src.captured = src.captured || [];
     src.captured.push({ uid: inst.uid, cardId: inst.cardId, owner: item.controller, upgrades: [] });
-    state.log.push({ type: 'captured', uid: inst.uid, cardId: inst.cardId, by: src.uid, sound: 'capture' });
+    SB.log(state, { type: 'captured', uid: inst.uid, cardId: inst.cardId, by: src.uid, sound: 'capture' });
   };
 
   // Defeat the damaged (surviving, non-leader) defender of the just-ended attack.
@@ -899,7 +899,7 @@
         lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
       } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
     });
-    state.log.push({ type: 'upgradesDefeated', uid: u.uid, sound: 'destroy' });
+    SB.log(state, { type: 'upgradesDefeated', uid: u.uid, sound: 'destroy' });
     if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
   };
 
@@ -907,7 +907,7 @@
   O.healAllFriendly = function (state, item) {
     SB.allUnits(state, item.controller).forEach(function (u) {
       if (u.damage > 0) {
-        state.log.push({ type: 'unitHeal', uid: u.uid, amount: u.damage, sound: 'heal' });
+        SB.log(state, { type: 'unitHeal', uid: u.uid, amount: u.damage, sound: 'heal' });
         u.damage = 0;
       }
     });
@@ -923,14 +923,14 @@
       if (inst.leaderPilot) return;
       bearer.upgrades.splice(bearer.upgrades.indexOf(inst), 1);
       state.players[bearer.owner].hand.push(inst);
-      state.log.push({ type: 'returnedToHand', uid: bearer.uid, cardId: inst.cardId });
+      SB.log(state, { type: 'returnedToHand', uid: bearer.uid, cardId: inst.cardId });
     });
   };
 
   // Disclose: reveal hand cards covering the aspect icons (public log; simplified
   // to an all-at-once reveal — the gating happened via condition canDisclose).
   O.discloseReveal = function (state, item) {
-    state.log.push({ type: 'disclosed', player: item.controller, aspects: item.op.aspects, notice: true });
+    SB.log(state, { type: 'disclosed', player: item.controller, aspects: item.op.aspects, notice: true });
     if (SB.fireLeaderTrigger) SB.fireLeaderTrigger(state, item.controller, 'onRevealOrDiscard', {});
     SB.allUnits(state, item.controller).forEach(function (u) {
       SB.fireTriggers(state, 'onRevealOrDiscard', u, { sourceUid: u.uid });
@@ -941,7 +941,7 @@
   O.roundCombatPenaltyVsBase = function (state, item) {
     state.tempCombatMods = state.tempCombatMods || [];
     state.tempCombatMods.push({ enemyOf: item.controller, vsBase: true, power: item.op.amount });
-    state.log.push({ type: 'globalCombatMod', player: item.controller, sound: 'buff' });
+    SB.log(state, { type: 'globalCombatMod', player: item.controller, sound: 'buff' });
   };
 
   // Exhaust an enemy unit and keep it exhausted while this unit remains in play.
@@ -951,7 +951,7 @@
     if (!u || !src) return;
     u.exhausted = true;
     src.jails = u.uid;
-    state.log.push({ type: 'jailed', uid: u.uid, by: src.uid, sound: 'ability', notice: true });
+    SB.log(state, { type: 'jailed', uid: u.uid, by: src.uid, sound: 'ability', notice: true });
   };
 
   // Suppress all keywords on a unit for this round.
@@ -959,14 +959,14 @@
     const u = SB.findUnit(state, target.uid);
     if (!u) return;
     u.keywordsSuppressed = true;
-    state.log.push({ type: 'keywordsSuppressed', uid: u.uid, sound: 'ability' });
+    SB.log(state, { type: 'keywordsSuppressed', uid: u.uid, sound: 'ability' });
   };
 
   // Plot support: discount for the next plot card this phase.
   O.plotDiscount = function (state, item) {
     const p = state.players[item.controller];
     p.plotDiscount = (p.plotDiscount || 0) + item.op.amount;
-    state.log.push({ type: 'plotDiscount', player: item.controller, sound: 'buff' });
+    SB.log(state, { type: 'plotDiscount', player: item.controller, sound: 'buff' });
   };
 
   // Offer playing Plot cards from resources (used by leader deploys and effects).
@@ -1007,12 +1007,12 @@
       p.resources[action.resourceIndex] = { instance: p.deck.shift(), exhausted: wasExhausted };
       p.playedThisPhase = p.playedThisPhase || [];
       p.playedThisPhase.push(inst.cardId);
-      state.log.push({ type: 'plotPlayed', player: itemStep.player, cardId: inst.cardId, sound: 'play' });
+      SB.log(state, { type: 'plotPlayed', player: itemStep.player, cardId: inst.cardId, sound: 'play' });
       if (card.type === 'unit') {
         const unit = SB.makeUnit(state, inst.cardId, itemStep.player);
         unit.uid = inst.uid;
         state[card.arena].push(unit);
-        if (SB.hasKeyword(state, unit, 'shielded')) { unit.shields += 1; state.log.push({ type: 'shield', uid: unit.uid, sound: 'shield' }); }
+        if (SB.hasKeyword(state, unit, 'shielded')) { unit.shields += 1; SB.log(state, { type: 'shield', uid: unit.uid, sound: 'shield' }); }
         if (SB.hasKeyword(state, unit, 'ambush')) {
           state.queue.push({ step: 'effect', controller: itemStep.player, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
             op: { op: 'ambushAttack', target: null } });
@@ -1053,7 +1053,7 @@
       const u = SB.findUnit(state, action.uid);
       if (!u) return;
       u.upgrades.push(itemStep.inst);
-      state.log.push({ type: 'attached', uid: u.uid, cardId: itemStep.inst.cardId, sound: 'attach' });
+      SB.log(state, { type: 'attached', uid: u.uid, cardId: itemStep.inst.cardId, sound: 'attach' });
     },
   };
 
@@ -1116,7 +1116,7 @@
       state[arena].splice(state[arena].indexOf(victim), 1);
       captor.captured = captor.captured || [];
       captor.captured.push({ uid: victim.uid, cardId: victim.cardId, owner: victim.owner, upgrades: victim.upgrades });
-      state.log.push({ type: 'captured', uid: victim.uid, cardId: victim.cardId, by: captor.uid, sound: 'capture' });
+      SB.log(state, { type: 'captured', uid: victim.uid, cardId: victim.cardId, by: captor.uid, sound: 'capture' });
       const rest = itemStep.budget - hp;
       if (rest > 0) state.queue.unshift({ step: 'captureBudgetPick', player: itemStep.player,
         captorUid: itemStep.captorUid, budget: rest });
@@ -1126,7 +1126,7 @@
   // Look at an opponent's hand (revealed in the log).
   O.revealHand = function (state, item) {
     const opp = SB.other(item.controller);
-    state.log.push({ type: 'handRevealed', player: opp,
+    SB.log(state, { type: 'handRevealed', player: opp,
       cards: state.players[opp].hand.map(function (i) { return i.cardId; }), notice: true });
   };
 
@@ -1159,7 +1159,7 @@
         SB.efx(state, itemStep.ctx).lastDiscardedType = SB.card(inst.cardId).type;
         SB.efx(state, itemStep.ctx).lastDiscardedCost = SB.card(inst.cardId).cost;
       }
-      state.log.push({ type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
+      SB.log(state, { type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
       if (SB.fireLeaderTrigger) SB.fireLeaderTrigger(state, itemStep.player, 'onRevealOrDiscard', {});
       SB.allUnits(state, itemStep.player).forEach(function (u) {
         SB.fireTriggers(state, 'onRevealOrDiscard', u, { sourceUid: u.uid });
@@ -1241,7 +1241,7 @@
       } else if (took) {
         const inst = p.deck.splice(action.deckIndex, 1)[0];
         p.hand.push(inst);
-        state.log.push({ type: 'searched', player: itemStep.player });
+        SB.log(state, { type: 'searched', player: itemStep.player });
       }
       if (took && itemStep.remaining > 1) {
         // Multi-take search: keep picking from the same window before shuffling.
@@ -1252,7 +1252,7 @@
       // Shuffle after searching (seeded). (Printed rule bottoms the unseen window in
       // random order; a full shuffle is mechanically equivalent for hidden zones.)
       p.deck = SB.shuffled(p.deck, SB.rng(SB.stateSeed(state, 'searchShuffle')));
-      state.log.push({ type: 'deckShuffled', player: itemStep.player });
+      SB.log(state, { type: 'deckShuffled', player: itemStep.player });
     },
   };
 
@@ -1262,7 +1262,7 @@
     if (!u) return;
     u.tempAbilities = u.tempAbilities || [];
     u.tempAbilities.push(item.op.ability);
-    state.log.push({ type: 'gainedAbility', uid: u.uid, sound: 'buff' });
+    SB.log(state, { type: 'gainedAbility', uid: u.uid, sound: 'buff' });
   };
 
   // Modify the pending combat (queued combatDamage item for this attacker).
@@ -1275,7 +1275,7 @@
     if (!cd) return;
     cd.bonusPower = (cd.bonusPower || 0) + (item.op.amount || 0);
     cd.defenderPowerDelta = (cd.defenderPowerDelta || 0) + (item.op.defenderDelta || 0);
-    state.log.push({ type: 'attackModified', uid: item.ctx.sourceUid });
+    SB.log(state, { type: 'attackModified', uid: item.ctx.sourceUid });
   };
 
   // Exhaust another friendly unit as a cost, then boost this attack.
@@ -1283,7 +1283,7 @@
     const u = SB.findUnit(state, target.uid);
     if (!u || u.exhausted) return;
     u.exhausted = true;
-    state.log.push({ type: 'exhausted', uid: u.uid });
+    SB.log(state, { type: 'exhausted', uid: u.uid });
     O.attackBonus(state, item);
   };
 
@@ -1301,7 +1301,7 @@
     if (i < 0) return;
     const inst = owner.discard.splice(i, 1)[0];
     owner.resources.push({ instance: inst, exhausted: false });
-    state.log.push({ type: 'resourced', player: item.controller });
+    SB.log(state, { type: 'resourced', player: item.controller });
   };
 
   // Defeat a unit and remember how many upgrades it had.
@@ -1329,10 +1329,10 @@
     const shares = (SB.card(inst.cardId).aspects || []).some(function (a) { return baseAspects.indexOf(a) >= 0; });
     if (shares) {
       p.hand.push(inst);
-      state.log.push({ type: 'milledToHand', player: item.controller, sound: 'draw' });
+      SB.log(state, { type: 'milledToHand', player: item.controller, sound: 'draw' });
     } else {
       p.discard.push(inst);
-      state.log.push({ type: 'milled', player: item.controller, cardId: inst.cardId });
+      SB.log(state, { type: 'milled', player: item.controller, cardId: inst.cardId });
     }
   };
 
@@ -1358,7 +1358,7 @@
     if (!src || !u) return;
     src.bondTarget = u.uid;
     src.bondGrant = { power: item.op.power || 0, hp: item.op.hp || 0 };
-    state.log.push({ type: 'bonded', uid: src.uid, to: u.uid, sound: 'buff' });
+    SB.log(state, { type: 'bonded', uid: src.uid, to: u.uid, sound: 'buff' });
   };
 
   // Temporary per-player cost discount for the next N matching cards this phase.
@@ -1366,7 +1366,7 @@
     const p = state.players[item.controller];
     p.discounts = p.discounts || [];
     p.discounts.push({ amount: item.op.amount, remaining: item.op.count || 1, filter: item.op.filter || {} });
-    state.log.push({ type: 'discountGranted', player: item.controller, sound: 'buff' });
+    SB.log(state, { type: 'discountGranted', player: item.controller, sound: 'buff' });
   };
 
   // Take a matching card from your discard pile into hand.
@@ -1397,7 +1397,7 @@
       const p = state.players[itemStep.player];
       const inst = p.discard.splice(action.index, 1)[0];
       p.hand.push(inst);
-      state.log.push({ type: 'tookFromDiscard', player: itemStep.player, sound: 'draw' });
+      SB.log(state, { type: 'tookFromDiscard', player: itemStep.player, sound: 'draw' });
     },
   };
 
@@ -1449,7 +1449,7 @@
       const u = SB.findUnit(state, action.uid);
       if (!u || u.exhausted) return;
       u.exhausted = true;
-      state.log.push({ type: 'exhausted', uid: u.uid });
+      SB.log(state, { type: 'exhausted', uid: u.uid });
       SB.damageBase(state, itemStep.basePlayer, 1, 'effect');
       // Keep offering until the player stops or runs out.
       state.queue.unshift({ step: 'massExhaustPick', player: itemStep.player,
@@ -1476,7 +1476,7 @@
       const p = state.players[itemStep.player];
       const inst = p.hand.splice(action.handIndex, 1)[0];
       p.deck.push(inst);
-      state.log.push({ type: 'bottomedCard', player: itemStep.player });
+      SB.log(state, { type: 'bottomedCard', player: itemStep.player });
     },
   };
 
@@ -1514,7 +1514,7 @@
       if (!src || !dst) return;
       const inst = src.upgrades.splice(action.index, 1)[0];
       dst.upgrades.push(inst);
-      state.log.push({ type: 'attached', uid: dst.uid, cardId: inst.cardId, sound: 'attach' });
+      SB.log(state, { type: 'attached', uid: dst.uid, cardId: inst.cardId, sound: 'attach' });
     },
   };
 
@@ -1533,7 +1533,7 @@
       if (!u) return;
       const inst = u.upgrades.splice(action.index, 1)[0];
       if (!SB.card(inst.cardId).token) state.players[u.owner].discard.push(inst);
-      state.log.push({ type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
+      SB.log(state, { type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
       // Removing +HP can defeat the bearer.
       if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
     },
@@ -1557,7 +1557,7 @@
       const p = state.players[itemStep.player];
       const inst = p.discard.splice(action.index, 1)[0];
       p.hand.push(inst);
-      state.log.push({ type: 'tookFromDiscard', player: itemStep.player, sound: 'draw' });
+      SB.log(state, { type: 'tookFromDiscard', player: itemStep.player, sound: 'draw' });
     },
   };
 
@@ -1612,7 +1612,7 @@
     apply: function (state, itemStep, action) {
       if (action.uid == null) return;
       const u = SB.findUnit(state, action.uid);
-      if (u && u.exhausted && !u.stunned) { u.exhausted = false; state.log.push({ type: 'readied', uid: u.uid }); }
+      if (u && u.exhausted && !u.stunned) { u.exhausted = false; SB.log(state, { type: 'readied', uid: u.uid }); }
     },
   };
 
@@ -1647,13 +1647,13 @@
       const inst = p.deck[0];
       if (!inst) return;
       if (action.mode === 'leave') {
-        state.log.push({ type: 'peeked', player: itemStep.player });
+        SB.log(state, { type: 'peeked', player: itemStep.player });
       } else if (action.mode === 'bottom') {
         p.deck.shift(); p.deck.push(inst);
-        state.log.push({ type: 'peekBottomed', player: itemStep.player });
+        SB.log(state, { type: 'peekBottomed', player: itemStep.player });
       } else if (action.mode === 'discard') {
         p.deck.shift(); p.discard.push(inst);
-        state.log.push({ type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
+        SB.log(state, { type: 'discarded', player: itemStep.player, cardId: inst.cardId, sound: 'discard' });
       } else if (action.mode === 'play') {
         SB.playCardWithMods(state, itemStep.player,
           { fromDeckTop: true, cardId: inst.cardId, attachTo: action.attachTo }, {});
@@ -1724,7 +1724,7 @@
     },
     apply: function (state, itemStep, action) {
       const branch = itemStep[action.pick];
-      state.log.push({ type: 'binaryChosen', player: itemStep.player, pick: action.pick });
+      SB.log(state, { type: 'binaryChosen', player: itemStep.player, pick: action.pick });
       SB.queueEffects(state, itemStep.controller, branch.effects, itemStep.ctx || {});
     },
   };
@@ -1740,7 +1740,7 @@
     sources.forEach(function (src) {
       (src.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'bounty') return;
-        state.log.push({ type: 'bountyCollected', uid: unit.uid, sound: 'claim' });
+        SB.log(state, { type: 'bountyCollected', uid: unit.uid, sound: 'claim' });
         SB.queueEffects(state, collector, ab.effects, { bountyUnitUid: unit.uid, bountyCardId: unit.cardId });
       });
     });
@@ -1759,7 +1759,7 @@
       u.uid = cap.uid;
       u.upgrades = cap.upgrades || [];
       state[SB.card(cap.cardId).arena].push(u);
-      state.log.push({ type: 'rescued', uid: u.uid, cardId: u.cardId });
+      SB.log(state, { type: 'rescued', uid: u.uid, cardId: u.cardId });
     });
     unit.captured = [];
   }

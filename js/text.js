@@ -480,6 +480,38 @@
     return kw.n != null ? name + ' ' + kw.n : name;
   }
 
+  // ---- targeting prompts (CARD-LOG-AND-TARGETING-SPEC §16) ------------------
+  // Every prompt is GENERATED from the effect data, exactly like rules text, so a
+  // card author never writes one and an unnamed effect is never a blank prompt.
+  // The card says WHAT ('Choose an enemy unit'); the UI appends HOW ('Click a
+  // highlighted card') — see js/targeting.js. Keep these two responsibilities apart.
+
+  // What the open queue item is asking for, as one English sentence.
+  SB.targetPrompt = function (state, item) {
+    if (!item) return 'Make a choice.';
+    if (item.step === 'mulligan') return 'Keep this hand, or take a new one?';
+    if (item.step === 'setupResources') return 'Choose a card to bank as a starting resource.';
+    if (item.step === 'regroupResource') return 'Bank a card as a resource, or decline.';
+    if (item.onChoose === 'ambush') return 'Ambush — attack a unit now, or decline.';
+
+    const source = item.ctx && item.ctx.cardId ? SB.names.card(item.ctx.cardId) : null;
+    let ask;
+    if (item.op && item.op.op && opText[item.op.op]) {
+      // Reuse the card's own clause so the prompt says what the effect will DO,
+      // not merely that a choice is due: 'Deal 3 damage to an enemy unit.'
+      let clause;
+      try { clause = opText[item.op.op](item.op); } catch (e) { clause = null; }
+      ask = clause ? cap(clause) + '.' : null;
+    }
+    if (!ask) ask = 'Choose a target.';
+    return source ? source + ' — ' + lowerFirst(ask) : ask;
+  };
+
+  function lowerFirst(s) {
+    // Only de-capitalise a plain word; a proper name keeps its capital.
+    return /^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+  }
+
   // Full rules text for a card id, as an array of lines.
   SB.cardText = function (cardId) {
     const card = SB.card(cardId);

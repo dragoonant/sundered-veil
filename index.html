@@ -45,7 +45,20 @@
       <button id="decline-btn" style="display:none">Done</button>
     </div>
   </div>
-  <div id="log"></div>
+  <div id="side">
+    <!-- Current state (§8) sits above history (§5); faces (§7) between them, because a
+         log line is not a card and an animation is gone the moment you look away. -->
+    <div id="prompt" class="prompt"></div>
+    <div id="battle-line" class="battle-line" style="display:none"></div>
+    <div id="recent-wrap">
+      <div class="side-title">Recently played</div>
+      <div id="recent"></div>
+    </div>
+    <div id="log"></div>
+  </div>
+  </div>
+  <!-- §13: options the board does not draw. Peek pushes it aside without answering. -->
+  <div id="choice-modal"></div>
   </div>
 </div>
 <!-- Load order matters (dependency order); mirror of tests.html plus UI files.
@@ -79,6 +92,8 @@
 <script src="js/sound.js"></script>
 <script src="js/cardview.js"></script>
 <script src="js/preview.js"></script>
+<script src="js/logpanel.js"></script>
+<script src="js/targeting.js"></script>
 <script src="js/help.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/ui.js"></script>

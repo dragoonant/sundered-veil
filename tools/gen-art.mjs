@@ -22,18 +22,20 @@ const key = flag('--key') || process.env.HF_TOKEN ||
 
 // The STYLE block must stay byte-identical across every prompt — it is what makes
 // 400+ generations read as one set (CARD-GAME-LESSONS §5).
-const STYLE = 'chibi super-deformed style, big head small body, bold clean outlines, cel shading, vibrant saturated colors, single centered subject, plain soft-gradient background, no text, no watermark, high quality game card illustration';
+const STYLE = 'chibi super-deformed style, big head small body, bold clean outlines, cel shading, vibrant saturated colors, space-opera science fiction setting, used-future technology, blaster rifles, durasteel plating, starships, detailed environment background with depth and atmosphere, cinematic lighting, wordless image, blank unmarked surfaces, no lettering, no signage, no logos, no captions, no symbols, no watermark, no signature, high quality game card illustration';
 
-const prompts = JSON.parse(readFileSync(join(root, 'tools', 'art-prompts.json'), 'utf8'));
+const promptFile = flag('--prompts') || join(root, 'tools', 'art-prompts.json');
+const outDir = join(root, flag('--out') || 'art');
+const prompts = JSON.parse(readFileSync(promptFile, 'utf8'));
 const only = flag('--only') ? flag('--only').split(',') : null;
 const limit = flag('--limit') ? Number(flag('--limit')) : Infinity;
 
-mkdirSync(join(root, 'art'), { recursive: true });
+mkdirSync(outDir, { recursive: true });
 
 const plan = [];
 for (const [id, subject] of Object.entries(prompts)) {
   if (only && !only.includes(id)) continue; // exact match only — no substrings
-  const out = join(root, 'art', id + '.png');
+  const out = join(outDir, id + '.png');
   if (existsSync(out) && !has('--force')) continue;
   plan.push({ id, subject, out });
 }

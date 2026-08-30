@@ -4,8 +4,11 @@
     {
       "name": "game",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["tools/serve.mjs", "8321"],
-      "port": 8321
+      "runtimeArgs": [
+        "tools/serve.mjs"
+      ],
+      "port": 8321,
+      "autoPort": true
     }
   ]
 }

@@ -7,6 +7,10 @@ Read these before doing anything:
 2. **PLAN.md** — the phased build plan and scope for this project.
 3. **NOTICE.md** — the legal posture. Update it in the same commit as any change affecting
    its claims.
+4. **CARD-PRESENTATION-SPEC.md** — how a card renders.
+5. **CARD-LOG-AND-TARGETING-SPEC.md** — how the game narrates what happened and asks
+   who to hit. Binding for js/logtext.js, js/logpanel.js, js/targeting.js, and anything
+   that creates a queue choice. Divergences go in DEVIATIONS.md.
 
 ## Hard rules
 
@@ -16,8 +20,11 @@ Read these before doing anything:
 - Engine surface is exactly `SB.legalActions(state)`, `SB.apply(state, action)`,
   `SB.isTerminal(state)`. `apply` never mutates.
 - All display text lives in `names.js`. Everywhere else uses stable internal ids.
-- Card rules text is GENERATED from effect data, never stored.
+- Card rules text, log lines, and targeting prompts are all GENERATED from data,
+  never stored. Log entries are structured objects; prose happens at render time.
 - Never write third-party card names anywhere except the gitignored `scratch/` dir.
 - API keys: `.hf_token`, `.elevenlabs_key` are gitignored; resolution order is
   flag → env var → key file.
+- Every log entry goes through `SB.log(state, entry)` — never `state.log.push` — so
+  uid-bearing entries stamp their cardId and stay nameable after the card dies.
 - Run the headless tests (`node tools/run-tests.mjs --quiet`) before any commit.

@@ -46,6 +46,27 @@
     return JSON.parse(JSON.stringify(obj));
   };
 
+  // The one log entry point (CARD-LOG-AND-TARGETING-SPEC §1). Entries are STRUCTURED —
+  // prose is generated at render time by js/logtext.js, never stored. Any entry naming a
+  // unit by uid gets its cardId stamped here, so the log can still name (and preview) a card
+  // that has since been defeated and left the state.
+  // Secondary actors get stamped too ('by' = the doer, 'to'/'a'/'b' = the other end),
+  // so a line naming two units still names both after either has left the board.
+  const LOG_UIDS = { uid: 'cardId', by: 'byCardId', to: 'toCardId', a: 'aCardId', b: 'bCardId',
+    attacker: 'attackerCardId' };
+  SB.log = function (state, entry) {
+    if (SB.findUnit) {
+      for (const key in LOG_UIDS) {
+        const stamp = LOG_UIDS[key];
+        if (entry[key] == null || entry[stamp] != null) continue;
+        const u = SB.findUnit(state, entry[key]);
+        if (u) entry[stamp] = u.cardId;
+      }
+    }
+    state.log.push(entry);
+    return entry;
+  };
+
   SB.other = function (playerIdx) { return playerIdx === 0 ? 1 : 0; };
 
   SB.assert = function (cond, msg) {

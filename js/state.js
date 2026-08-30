@@ -68,7 +68,7 @@
         resourcedThisRound: false, mulliganed: false,
       });
     });
-    state.log.push({ type: 'gameStart', initiative: state.initiative });
+    SB.log(state, { type: 'gameStart', initiative: state.initiative });
     // Setup phase: each player (initiative first) decides mulligan, then picks 2 cards
     // from hand to start as resources. Modeled through the queue like any other choice.
     state.queue.push({ step: 'mulligan', player: state.initiative });
