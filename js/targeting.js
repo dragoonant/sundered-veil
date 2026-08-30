@@ -194,6 +194,31 @@
     return true;
   };
 
+  // Generic-question popup: the same panel and hide/restore machinery, but the
+  // caller (ui.js) builds the body — used for choices whose options are buttons
+  // and revealed piles rather than `choose` candidates. Shares peekedKey so Esc
+  // and the restore button behave identically.
+  SB.renderGenericModal = function (key, nodes, restoreLabel) {
+    const modal = $('choice-modal');
+    if (!modal) return false;
+    modal.textContent = '';
+    modal.dataset.choiceKey = key;
+    const content = el('div', 'choice-modal-content');
+    nodes.forEach(function (n) { content.appendChild(n); });
+    const controls = el('div', 'choice-modal-controls');
+    const hide = el('button', 'peek-btn', 'Hide — check the board');
+    hide.onclick = function () { setPeek(true); peekedKey = key; };
+    controls.appendChild(hide);
+    content.appendChild(controls);
+    modal.appendChild(content);
+    const restore = el('button', 'choice-peek-restore', restoreLabel || 'Show the choices');
+    restore.onclick = function () { setPeek(false); peekedKey = null; };
+    modal.appendChild(restore);
+    modal.classList.add('open');
+    setPeek(peekedKey === key);
+    return true;
+  };
+
   // ---- §14: the attack arrow -----------------------------------------------
   // Aiming and resolution are the same relationship, so they are the same picture:
   // amber while it is a proposal, danger red once it is a fact.

@@ -239,7 +239,8 @@
     SB.logPanel.renderLog(s, $('log'));
     renderPrompt(s, acts);
     // §13: the modal owns input whenever the board cannot show the options.
-    SB.renderChoiceModal(s, acts, UI.humanSeat, whoActs(s), UI.doAction);
+    const modalOpen = SB.renderChoiceModal(s, acts, UI.humanSeat, whoActs(s), UI.doAction);
+    renderGenericChoicePopup(s, acts, modalOpen);
     // §14: a battle that stopped to ask a question keeps its arrow up.
     SB.redrawDeclaredArrow(s, UI.humanSeat);
     $('undo-btn').disabled = UI.history.length === 0;
@@ -458,10 +459,21 @@
       case 'discardCard': return 'Discard: ' + cardName(s.players[a.targetPlayer != null ? a.targetPlayer : a.player].hand[a.handIndex].cardId);
       case 'playHandCard': return a.handIndex === -1 ? SB.names.ui.decline : 'Play: ' + cardName(a.cardId);
       case 'searchTake': return a.deckIndex === -1 ? SB.names.ui.decline : 'Take: ' + cardName(s.players[a.player].deck[a.deckIndex].cardId);
-      case 'binary': return a.pick === 'a' ? 'Option 1' : 'Option 2';
+      case 'binary': {
+        // Never "Option 1 / Option 2": say what each branch actually does.
+        const it = s.queue[0] || {};
+        const branch = a.pick === 'a' ? it.a : it.b;
+        if (branch && SB.describeEffects) {
+          const t = SB.describeEffects(branch.effects);
+          return t.charAt(0).toUpperCase() + t.slice(1);
+        }
+        return a.pick === 'a' ? 'Option 1' : 'Option 2';
+      }
       case 'effectAttack': return a.target ? (a.target.kind === 'base' ? 'Attack the base' : 'Attack ' + unitName(s, a.target.uid)) : SB.names.ui.decline;
       case 'exploitUnit': return 'Sacrifice: ' + unitName(s, a.uid);
-      case 'peekAct': return a.mode === 'play' ? 'Play: ' + cardName(a.cardId) : 'Top card: ' + a.mode;
+      case 'peekAct': return a.mode === 'play' ? 'Play: ' + cardName(a.cardId)
+        : { bottom: 'Put it on the bottom of the deck', leave: 'Leave it on top',
+            discard: 'Discard it' }[a.mode] || ('Top card: ' + a.mode);
       case 'indirectTo': case 'dividedTo': return a.target.kind === 'base' ? 'Assign 1 to base' : 'Assign 1 to ' + unitName(s, a.target.uid);
       case 'mayReady': return a.uid == null ? SB.names.ui.decline : 'Ready: ' + unitName(s, a.uid);
       case 'takeFromDiscard': return a.index === -1 ? SB.names.ui.decline : 'Return: ' + cardName(s.players[a.player].discard[a.index].cardId);
@@ -480,7 +492,11 @@
       case 'bottomCard': return 'Bottom: ' + cardName(s.players[a.player].hand[a.handIndex].cardId);
       case 'bottomDiscard': return a.index === -1 ? 'Done' : 'Bottom: ' + cardName(s.players[a.player].discard[a.index].cardId);
       case 'bottomUnit': return 'Bottom: ' + cardName(s.players[a.player].discard[a.index].cardId);
-      case 'arrange2': return 'Order: ' + a.mode;
+      case 'arrange2': return {
+        keep: 'Keep both, same order', swap: 'Keep both, swapped',
+        bottomFirst: 'Bottom the first, keep the second',
+        bottomSecond: 'Bottom the second, keep the first',
+        bottomBoth: 'Bottom both' }[a.mode] || a.mode;
       case 'moveUpgrade': return a.from == null ? SB.names.ui.decline : 'Move upgrade to ' + unitName(s, a.to);
       case 'defeatUpgrade': return 'Defeat upgrade on ' + unitName(s, a.uid);
       case 'auctionPick': return 'Reveal ' + (a.who === UI.humanSeat ? 'your' : 'their') + ' deck';
@@ -599,29 +615,54 @@
       bar.style.display = decline ? '' : 'none';
       return;
     }
-    const generic = mineToAct ? acts.filter(function (a) { return !SPATIAL[a.type]; }) : [];
-    if (generic.length > 0) {
-      // Show the faces of any cards this choice is about (peeked tops first, then
-      // one face per card-referencing action) — a button list must never ask the
-      // player to decide about a card they cannot see.
-      const shown = {};
-      revealedCards(s).forEach(function (r) {
-        shown[r.cardId] = true;
-        bar.appendChild(choiceChip(s, r.cardId, r.label, null));
-      });
-      generic.slice(0, 24).forEach(function (a) {
-        const cid = actionCardId(s, a);
-        if (cid && !shown[cid]) {
-          shown[cid] = true;
-          bar.appendChild(choiceChip(s, cid, null, a));
-        } else {
-          bar.appendChild(actionButton(s, a, actionLabel(s, a)));
-        }
-      });
-      bar.style.display = '';
-    } else {
-      bar.style.display = 'none';
-    }
+    // Generic queue questions live in the popup (renderGenericChoicePopup),
+    // not the bar: the bar sat between the hand and the player row and buried
+    // the board. The bar keeps only drop-variant resolution above.
+    bar.style.display = 'none';
+  }
+
+  // Generic queue choices (buttons + revealed piles) go in the same popup panel
+  // as candidate choices, with the same hide / "show the choices" escape hatch,
+  // so the player can study the board mid-decision. Called after
+  // SB.renderChoiceModal so the candidate modal keeps priority.
+  function renderGenericChoicePopup(s, acts, candidateModalOpen) {
+    if (candidateModalOpen) return;
+    if (whoActs(s) !== UI.humanSeat) return;
+    if (s.queue.length > 0 && s.queue[0].candidates) return;   // board/modal owns it
+    const generic = acts.filter(function (a) { return !SPATIAL[a.type]; });
+    if (generic.length === 0) return;
+    const it = s.queue[0] || null;
+    const nodes = [];
+    if (it) nodes.push(el('div', 'choice-modal-prompt', SB.targetPrompt(s, it)));
+    nodes.push(el('div', 'choice-modal-hint',
+      'Hover a card to read it in full, or hide this to check the board.'));
+    // Faces of any cards this choice is about (peeked tops first, then one face
+    // per card-referencing action) — a button list must never ask the player to
+    // decide about a card they cannot see.
+    const shown = {};
+    const cards = el('div', 'choice-modal-cards');
+    revealedCards(s).forEach(function (r) {
+      shown[r.cardId] = true;
+      cards.appendChild(choiceChip(s, r.cardId, r.label, null));
+    });
+    const btns = el('div', 'choice-modal-buttons');
+    generic.slice(0, 24).forEach(function (a) {
+      const cid = actionCardId(s, a);
+      if (cid && !shown[cid]) {
+        shown[cid] = true;
+        cards.appendChild(choiceChip(s, cid, null, a));
+      } else {
+        btns.appendChild(actionButton(s, a, actionLabel(s, a)));
+      }
+    });
+    if (cards.childNodes.length) nodes.push(cards);
+    if (btns.childNodes.length) nodes.push(btns);
+    const key = 'g|' + (it ? it.step : '') + '|' + generic.map(function (a) {
+      const bit = a.mode || a.pick ||
+        (a.index != null ? a.index : (a.uid != null ? a.uid : (a.handIndex != null ? a.handIndex : '')));
+      return a.type + ':' + bit;
+    }).join(',');
+    SB.renderGenericModal(key, nodes);
   }
 
   // §16: always say what the game is waiting for. The card supplies WHAT (generated

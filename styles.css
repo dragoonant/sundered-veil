@@ -432,6 +432,13 @@ button:disabled { opacity: .4; cursor: default; }
 }
 .choice-option:focus { outline: none; }
 .choice-modal-controls { display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; }
+/* Generic-question popup: one action button per line so long branch
+   descriptions ("deal 2 damage to it; or do nothing") stay readable. */
+.choice-modal-buttons {
+  display: flex; flex-direction: column; gap: .5rem; align-items: stretch;
+  margin: .6rem 0 .8rem; max-width: 28rem; margin-left: auto; margin-right: auto;
+}
+.choice-modal-buttons .action-btn { text-align: center; white-space: normal; }
 .peek-btn {
   background: transparent; color: var(--muted); border: 1px solid var(--line);
   border-radius: 999px; padding: .4rem 1rem; font-size: .8rem; cursor: pointer;

@@ -280,6 +280,8 @@
   function describeAbilityPublic(ab) { return describeAbility(ab); }
 
   function describeAbilityLate(ab) { return describeAbility(ab); }
+  // Public: the UI labels binary-choice buttons with the branch they commit to.
+  SB.describeEffects = function (effects) { return describeEffectList(effects); };
   function describeEffectList(effects) {
     if (!effects || effects.length === 0) return 'do nothing';
     return effects.map(function (op) {
@@ -495,6 +497,9 @@
     if (item.onChoose === 'ambush') return 'Ambush — attack a unit now, or decline.';
 
     const source = item.ctx && item.ctx.cardId ? SB.names.card(item.ctx.cardId) : null;
+    if (item.step === 'binaryPick') return source ? source + ' — choose one option.' : 'Choose one option.';
+    if (item.step === 'peekDecide') return 'Look at the top card of your deck — what do you do with it?';
+    if (item.step === 'arrangeTop2') return 'Look at the top two cards of your deck — arrange them.';
     let ask;
     if (item.op && item.op.op && opText[item.op.op]) {
       // Reuse the card's own clause so the prompt says what the effect will DO,
