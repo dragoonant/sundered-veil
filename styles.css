@@ -15,6 +15,9 @@ img { -webkit-user-drag: none; user-select: none; }
   --card-preview-w: 19rem;
   --line: #2a3446;
   --muted: #93a3bd;
+  --panel: #1a2030;
+  --accent: #ffd166;
+  --danger: #e5484d;
   --role-actable: #f5c34d;
   --role-selected: #5b9dff;
   --role-target: #ff6bcb;
@@ -206,13 +209,33 @@ button:disabled { opacity: .4; cursor: default; }
 }
 .role-actable { animation: actable-pulse 1.7s ease-in-out infinite; }
 .role-target { box-shadow: 0 0 0 2px var(--role-target); border-color: var(--role-target); cursor: pointer; }
+/* §17: hovering an action button lights the card it concerns, so a button list is
+   never a set of unexplained verbs. */
+.role-hinted { box-shadow: 0 0 0 3px var(--role-selected), 0 0 18px rgba(91,157,255,.5); }
 .drop-ok  { box-shadow: 0 0 0 2px var(--role-picked); }
 .drop-hot { box-shadow: 0 0 0 3px var(--role-picked), 0 0 16px var(--role-picked); }
 .is-dragging-source { opacity: .28; }
 .is-draggable { touch-action: none; user-select: none; -webkit-user-drag: none; cursor: grab; }
 .is-draggable img { pointer-events: none; }
 .drag-clone { position: fixed; z-index: 55; pointer-events: none; opacity: .9; }
-#drag-arrow { position: fixed; inset: 0; z-index: 55; pointer-events: none; }
+/* §14: aiming and resolution are the same picture. z-index 45 keeps it above the
+   board but below every overlay, and it is a label, not a control. */
+#arrow-layer {
+  position: fixed; inset: 0; z-index: 45; display: none;
+  pointer-events: none; width: 100%; height: 100%;
+}
+#arrow-layer.open { display: block; }
+.attack-arrow {
+  fill: none; stroke: var(--danger, #e5484d); stroke-width: 3; stroke-linecap: round;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.8));
+  stroke-dasharray: 10 7;                       /* the crawl is what makes it a DIRECTION */
+  animation: attack-arrow-crawl 700ms linear infinite;
+}
+.attack-arrow-head { fill: var(--danger, #e5484d); stroke: none; }
+/* While still aiming, the arrow is a proposal rather than a fact. */
+.attack-arrow.is-aiming { stroke: var(--role-actable); opacity: .95; }
+.attack-arrow-head.is-aiming { fill: var(--role-actable); }
+@keyframes attack-arrow-crawl { to { stroke-dashoffset: -17; } }
 
 /* ================= preview / inspector / spotlight (SPEC §7) ================= */
 #preview {
@@ -266,21 +289,86 @@ button:disabled { opacity: .4; cursor: default; }
   padding: 8px 12px; background: #2a2233; border: 1px solid #574266;
   border-radius: 8px; margin: 4px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
+/* Choice chips: the face of a hidden-pile card a choice is about, above its button. */
+.choice-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.choice-chip-label {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .12em;
+  font-weight: 700; color: var(--muted);
+}
+.choice-chip .action-btn { font-size: 12px; padding: 4px 8px; max-width: 9rem; }
+
 #hand-bar { display: flex; align-items: flex-end; gap: 8px; padding: 6px 0 2px; }
 #hand { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-start; }
 #hand .card { flex: none; }
 
-/* Log is a right-hand sidebar: keeps vertical space for the board. */
-#log {
-  width: 230px; flex: none; overflow-y: auto; padding: 6px 12px; font-size: 12px;
-  color: var(--muted); background: #131824; border-left: 1px solid var(--line);
+/* ============ side panel: prompt, battle, recent, log (SPEC part one) ============
+   Ordered by how far each looks back: what the game wants NOW, the battle in flight,
+   the last few faces, then history. */
+#side {
+  width: 250px; flex: none; display: flex; flex-direction: column; min-height: 0;
+  background: #131824; border-left: 1px solid var(--line);
 }
+
+/* §16: there is never a state where the player is uncertain what is expected. */
+.prompt {
+  padding: .5rem .75rem; font-size: .8rem; line-height: 1.35;
+  border-bottom: 1px solid var(--line); color: #e8ecf5;
+}
+.prompt.waiting { color: var(--muted); font-style: italic; }
+.prompt.asking { color: var(--role-target); font-weight: 600; }
+.prompt.over { color: var(--accent); font-weight: 700; }
+
+/* §8: one line of CURRENT state — what history cannot give you. */
+.battle-line {
+  padding: .35rem .75rem; font-size: .78rem; font-weight: 600;
+  color: var(--danger, #e5484d); border-bottom: 1px solid var(--line);
+  background: rgba(229,72,77,.08);
+}
+.battle-arrow { color: var(--muted); }
+
+/* §7: a strip of actual faces, because a log line is not a card and a spotlight is
+   gone the moment you look away. */
+#recent-wrap { border-bottom: 1px solid var(--line); padding-bottom: .35rem; }
+.side-title {
+  font-size: .6rem; text-transform: uppercase; letter-spacing: .14em;
+  font-weight: 700; color: var(--muted); padding: .5rem .75rem .3rem;
+}
+#recent { display: flex; gap: .3rem; flex-wrap: wrap; padding: 0 .6rem .2rem; }
+#recent .recent-card { width: 2.6rem; cursor: help; }
+#recent .recent-card .card { width: 100%; }
+#recent .recent-card.theirs { opacity: .82; }
+.recent-empty {
+  color: var(--muted); font-size: .74rem; font-style: italic; padding: 0 .75rem .3rem;
+}
+
+/* §5: newest first, windowed, so the player never scrolls to find what just happened. */
+#log {
+  flex: 1; min-height: 0; overflow-y: auto; padding: .4rem .75rem .8rem;
+  font-size: .74rem; color: var(--muted);
+}
+.log-line { padding: .12rem 0; border-bottom: 1px solid rgba(255,255,255,.03); cursor: default; }
+.log-line.log-turn { color: var(--accent); font-weight: 700; }
+/* §4: the most important line in the log — a card that was paid for and did nothing. */
+.log-line.log-notice {
+  color: var(--role-actable); font-weight: 600;
+  border-left: 2px solid var(--role-actable); padding-left: .4rem;
+}
+/* §3: card names are live hover targets. 'help', not 'pointer' — this explains
+   itself; it does not promise a click that does nothing. */
+.card-ref {
+  color: #cfe0ff; border-bottom: 1px dotted rgba(207,224,255,.5); cursor: help;
+}
+.card-ref:hover, .card-ref:focus { color: #fff; border-bottom-color: #fff; outline: none; }
+.log-line.has-card { cursor: help; }
+.log-line.has-card:hover { color: #cfe0ff; }
+
 @media (max-width: 900px) {
   #main { flex-direction: column; }
-  #log { width: auto; height: 110px; border-left: none; border-top: 1px solid var(--line); }
+  #side {
+    width: auto; max-height: 40vh; border-left: none; border-top: 1px solid var(--line);
+  }
+  #log { max-height: 9rem; }
 }
-.log-line { padding: 1px 0; }
-.log-line { cursor: default; }
 
 /* responsive: remove content, don't shrink it (SPEC §12) */
 @media (max-width: 900px) {
@@ -314,3 +402,61 @@ button:disabled { opacity: .4; cursor: default; }
 #help-body { overflow-y: auto; padding: 6px 18px 18px; }
 #help-body h3 { margin: 14px 0 4px; color: #ffd166; font-size: 15px; }
 #help-body p { margin: 0; line-height: 1.5; font-size: 14px; color: #c8d3e4; }
+
+/* ============ §13: the choice modal, and the peek ============
+   For options the board does not draw. Cards go through the same wiring as board
+   cards, so they keep the hover preview — without which they cannot be READ before
+   picking one, which is the whole point of revealing them. */
+#choice-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.78);
+  display: none; place-items: center; z-index: 58; backdrop-filter: blur(3px);
+}
+#choice-modal.open { display: grid; }
+.choice-modal-content {
+  background: var(--panel, #1a2030); border: 1px solid var(--line);
+  border-radius: 12px; padding: 1.1rem 1.3rem;
+  max-width: min(92vw, 46rem); max-height: 90vh; overflow: auto; text-align: center;
+  box-shadow: 0 20px 80px rgba(0,0,0,.6);
+}
+.choice-modal-prompt { font-weight: 700; font-size: 1rem; margin-bottom: .2rem; }
+.choice-modal-hint { color: var(--muted); font-size: .8em; margin-bottom: .6rem; }
+.choice-modal-cards {
+  display: flex; flex-wrap: wrap; gap: .8rem;
+  justify-content: center; align-items: flex-start; margin: .8rem 0 1rem;
+}
+/* Bigger than a board card: these are being READ, not just located. */
+.choice-modal-cards .choice-option .card { width: calc(var(--card-board-w) * 1.55); }
+.choice-option { cursor: pointer; border-radius: 10px; }
+.choice-option:hover .card, .choice-option:focus .card {
+  box-shadow: 0 0 0 3px var(--role-target), 0 0 18px rgba(255,107,203,.55);
+}
+.choice-option:focus { outline: none; }
+.choice-modal-controls { display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap; }
+.peek-btn {
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: .4rem 1rem; font-size: .8rem; cursor: pointer;
+}
+.peek-btn:hover { color: #fff; border-color: var(--accent); }
+
+/* Peek: the modal must be able to get out of the way. Picking a target usually
+   depends on what is already on the table — which the modal is covering. */
+.choice-peek-restore { display: none; }
+#choice-modal.peek {
+  background: transparent; backdrop-filter: none;
+  pointer-events: none;                 /* cards underneath stay hoverable */
+  place-items: start center;
+}
+#choice-modal.peek .choice-modal-content { display: none; }
+#choice-modal.peek .choice-peek-restore {
+  display: inline-flex; align-items: center; pointer-events: auto;
+  margin-top: .5rem; background: var(--accent); color: #06101f;
+  border: 0; border-radius: 999px; padding: .45rem 1.1rem;
+  font-size: .85rem; font-weight: 700; cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,.55);
+}
+@media (max-width: 620px) {
+  .choice-modal-cards .choice-option .card { width: calc(var(--card-board-w) * 1.9); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .attack-arrow { animation: none; stroke-dasharray: none; }
+}

@@ -119,7 +119,7 @@
           live.clone = clone;
           live.node.classList.add('is-dragging-source');
         } else {
-          live.arrow = makeArrow();
+          live.arrow = true;      // §14: same picture as a declared attack, amber
         }
       }
       if (live.clone) {
@@ -127,8 +127,7 @@
         live.clone.style.top = (e.clientY - live.clone.offsetHeight * 0.85) + 'px';
       }
       if (live.arrow) {
-        const r = live.node.getBoundingClientRect();
-        drawArrow(live.arrow, r.left + r.width / 2, r.top + r.height / 2, e.clientX, e.clientY);
+        SB.arrow.draw(SB.arrow.centreOf(live.node), { x: e.clientX, y: e.clientY }, true);
       }
       hotTarget(e.clientX, e.clientY);
     }
@@ -155,7 +154,8 @@
       live.node.removeEventListener('pointercancel', onCancel);
       live.node.classList.remove('is-dragging-source');
       if (live.clone) live.clone.remove();
-      if (live.arrow) live.arrow.remove();
+      // Clearing the aiming arrow must restore the declared one if a battle is live.
+      if (live.arrow) { SB.arrow.clear(); if (UI.state) SB.redrawDeclaredArrow(UI.state, UI.humanSeat); }
       markTargets(false);
       const spec = live.spec;
       const node = live.node;
@@ -201,23 +201,6 @@
       UI.render();
     }
 
-    function makeArrow() {
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.id = 'drag-arrow';
-      svg.setAttribute('width', window.innerWidth);
-      svg.setAttribute('height', window.innerHeight);
-      svg.innerHTML = '<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">' +
-        '<path d="M0,0 L6,3 L0,6 z" fill="#f5c34d"/></marker></defs>' +
-        '<line x1="0" y1="0" x2="0" y2="0" stroke="#f5c34d" stroke-width="3" marker-end="url(#ah)"/>';
-      document.body.appendChild(svg);
-      return svg;
-    }
-    function drawArrow(svg, x1, y1, x2, y2) {
-      const line = svg.querySelector('line');
-      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
-      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
-    }
-
     // Capture-phase synthetic-click swallow, self-removing (§10: belt AND braces).
     function armClickSwallow() {
       function swallow(e) {
@@ -251,7 +234,14 @@
     renderHand(s, acts);
     renderResources(s);
     renderChoices(s, acts);
-    renderLog(s);
+    SB.logPanel.renderBattle(s, $('battle-line'), UI.humanSeat);
+    SB.logPanel.renderRecent(s, $('recent'), UI.humanSeat);
+    SB.logPanel.renderLog(s, $('log'));
+    renderPrompt(s, acts);
+    // §13: the modal owns input whenever the board cannot show the options.
+    SB.renderChoiceModal(s, acts, UI.humanSeat, whoActs(s), UI.doAction);
+    // §14: a battle that stopped to ask a question keeps its arrow up.
+    SB.redrawDeclaredArrow(s, UI.humanSeat);
     $('undo-btn').disabled = UI.history.length === 0;
   };
 
@@ -276,12 +266,15 @@
       if (a.type === 'leaderAction') label = SB.names.ui.leaderAbility;
       if (a.type === 'baseEpic') label = 'Base epic action';
       if (a.type === 'smuggle') label = 'Smuggle: ' + SB.names.card(a.cardId);
-      if (label) {
-        const b = el('button', 'action-btn', label);
-        b.onclick = function () { UI.doAction(a); };
-        btns.appendChild(b);
-      }
+      if (label) btns.appendChild(actionButton(s, a, label));
     });
+  }
+
+  // §11: a rebuilt node restarts its animation, so a board redrawn once a second
+  // stutters. Every actable card starts its pulse at the same wall-clock phase.
+  function markActable(node) {
+    node.classList.add('role-actable', 'is-draggable');
+    node.style.animationDelay = SB.animationPhase(1700);
   }
 
   function unitName(s, uid) {
@@ -346,7 +339,7 @@
     const canAttack = acts.some(function (a) { return a.type === 'attack' && a.attacker === u.uid; });
     const choice = choiceFor(s, acts, { kind: 'unit', uid: u.uid });
     const unitActs = acts.filter(function (a) { return a.type === 'unitAction' && a.uid === u.uid; });
-    if (canAttack || unitActs.length) node.classList.add('role-actable', 'is-draggable');
+    if (canAttack || unitActs.length) markActable(node);
     if (choice) node.classList.add('role-target');
 
     node.addEventListener('pointerdown', function (e) {
@@ -410,7 +403,7 @@
       const resource = acts.find(function (a) {
         return a.type === 'resourceCard' && a.player === UI.humanSeat && a.handIndex === i;
       });
-      if (spec.plays.length || resource) cardNode.classList.add('role-actable', 'is-draggable');
+      if (spec.plays.length || resource) markActable(cardNode);
       cardNode.tabIndex = 0;
       cardNode.addEventListener('pointerdown', function (e) {
         if (e.button !== 0) return;
@@ -496,6 +489,85 @@
     }
   }
 
+  // §17: a button list must never be a set of unexplained verbs. Hovering one lights
+  // up the card it concerns — the reverse of clicking a card to act on it.
+  function highlight(iid) {
+    document.querySelectorAll('.card.role-hinted').forEach(function (n) {
+      n.classList.remove('role-hinted');
+    });
+    if (iid == null) return;
+    const n = document.querySelector('.card[data-iid="' + iid + '"]');
+    if (n) n.classList.add('role-hinted');
+  }
+
+  function actionButton(s, a, label) {
+    const b = el('button', 'action-btn', label);
+    b.onclick = function () { UI.doAction(a); };
+    const focusIid = a.uid != null ? a.uid : (a.attacker != null ? a.attacker : a.attachTo);
+    if (focusIid != null) {
+      b.addEventListener('mouseenter', function () { highlight(focusIid); });
+      b.addEventListener('mouseleave', function () { highlight(null); });
+      b.addEventListener('focus', function () { highlight(focusIid); });
+      b.addEventListener('blur', function () { highlight(null); });
+    }
+    return b;
+  }
+
+  // Cards a queue step lets you LOOK at that no button carries (peeked deck tops).
+  // Spec §13: a choice about a card the board does not draw must show the card face.
+  function revealedCards(s) {
+    if (s.queue.length === 0) return [];
+    const it = s.queue[0];
+    const deck = it.player != null ? s.players[it.player].deck : null;
+    switch (it.step) {
+      case 'peekDecide':
+        return deck && deck[0] ? [{ cardId: deck[0].cardId, label: 'Top card' }] : [];
+      case 'arrangeTop2': {
+        const out = [];
+        if (deck && deck[0]) out.push({ cardId: deck[0].cardId, label: 'First (top)' });
+        if (deck && deck[1]) out.push({ cardId: deck[1].cardId, label: 'Second' });
+        return out;
+      }
+      case 'auctionPlay':
+        return it.cardId ? [{ cardId: it.cardId, label: 'Revealed' }] : [];
+      default: return [];
+    }
+  }
+
+  // The card face a generic action concerns, when it lives in a pile the board
+  // does not draw (deck / discard / an opponent's hand being looked at).
+  function actionCardId(s, a) {
+    const p = a.player != null ? s.players[a.player] : null;
+    switch (a.type) {
+      case 'searchTake': return a.deckIndex >= 0 ? p.deck[a.deckIndex].cardId : null;
+      case 'takeFromDiscard': return a.index >= 0 ? p.discard[a.index].cardId : null;
+      case 'bottomDiscard': case 'bottomUnit': return a.index >= 0 ? p.discard[a.index].cardId : null;
+      case 'playHandCard': return a.handIndex === -1 ? null : (a.cardId || null);
+      case 'peekAct': return a.mode === 'play' ? a.cardId : null;
+      case 'plotPlay': return a.resourceIndex === -1 ? null : (a.cardId || null);
+      case 'bottomCard': return p.hand[a.handIndex].cardId;
+      case 'discardCard':
+        return s.players[a.targetPlayer != null ? a.targetPlayer : a.player].hand[a.handIndex].cardId;
+      default: return null;
+    }
+  }
+
+  // A card face + its action button, previewable like any board card.
+  function choiceChip(s, cardId, label, action) {
+    const chip = el('div', 'choice-chip');
+    if (label) chip.appendChild(el('div', 'choice-chip-label', label));
+    const face = SB.renderCard({ cardId: cardId }, { size: 'hand', state: s });
+    face.tabIndex = 0;
+    SB.preview && SB.preview.attach(face, cardId, null, function () { return UI.state; });
+    chip.appendChild(face);
+    if (action) {
+      chip.appendChild(actionButton(s, action, actionLabel(s, action)));
+      face.style.cursor = 'pointer';
+      face.addEventListener('click', function () { UI.doAction(action); });
+    }
+    return chip;
+  }
+
   function renderChoices(s, acts) {
     const bar = $('choice-bar');
     bar.textContent = '';
@@ -518,22 +590,33 @@
     }
     const mineToAct = whoActs(s) === UI.humanSeat;
     if (mineToAct && s.queue.length > 0 && s.queue[0].candidates) {
-      bar.appendChild(el('span', null, SB.names.ui.chooseTarget));
+      // The prompt line says what is being asked and the board (or the modal) carries
+      // the picks; the bar is left with the one thing neither can be: declining.
+      const inter = SB.choiceInteraction(s);
+      if (inter && !inter.cardBacked) { bar.style.display = 'none'; return; }   // modal owns it
       const decline = acts.find(function (a) { return a.type === 'choose' && a.index === -1; });
-      if (decline) {
-        const b = el('button', 'action-btn', SB.names.ui.decline);
-        b.onclick = function () { UI.doAction(decline); };
-        bar.appendChild(b);
-      }
-      bar.style.display = '';
+      if (decline) bar.appendChild(actionButton(s, decline, SB.names.ui.decline));
+      bar.style.display = decline ? '' : 'none';
       return;
     }
     const generic = mineToAct ? acts.filter(function (a) { return !SPATIAL[a.type]; }) : [];
     if (generic.length > 0) {
+      // Show the faces of any cards this choice is about (peeked tops first, then
+      // one face per card-referencing action) — a button list must never ask the
+      // player to decide about a card they cannot see.
+      const shown = {};
+      revealedCards(s).forEach(function (r) {
+        shown[r.cardId] = true;
+        bar.appendChild(choiceChip(s, r.cardId, r.label, null));
+      });
       generic.slice(0, 24).forEach(function (a) {
-        const b = el('button', 'action-btn', actionLabel(s, a));
-        b.onclick = function () { UI.doAction(a); };
-        bar.appendChild(b);
+        const cid = actionCardId(s, a);
+        if (cid && !shown[cid]) {
+          shown[cid] = true;
+          bar.appendChild(choiceChip(s, cid, null, a));
+        } else {
+          bar.appendChild(actionButton(s, a, actionLabel(s, a)));
+        }
       });
       bar.style.display = '';
     } else {
@@ -541,12 +624,12 @@
     }
   }
 
-  function renderLog(s) {
-    const node = $('log');
-    node.textContent = '';
-    s.log.slice(-14).forEach(function (l) {
-      node.appendChild(el('div', 'log-line', SB.describeLog ? SB.describeLog(l) : l.type));
-    });
-    node.scrollTop = node.scrollHeight;
+  // §16: always say what the game is waiting for. The card supplies WHAT (generated
+  // in text.js); this appends HOW.
+  function renderPrompt(s, acts) {
+    const node = $('prompt');
+    const p = SB.promptLine(s, UI.humanSeat, whoActs(s));
+    node.textContent = p.text;
+    node.className = 'prompt ' + (p.cls || '');
   }
 })(window.SB = window.SB || {});
