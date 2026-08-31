@@ -2,6 +2,13 @@
    on a scrim, one renderer at three sizes, tap inspects / drag commits. */
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* No scrollbars anywhere in the game: the layout is expected to solve its own fit
+   (the hand fans, the mat scales, panels clip). Wheel and touch scrolling still work
+   where a panel genuinely overflows — what is suppressed is the chrome, not the
+   scrolling. Anything that would strand content out of reach must be fixed by making
+   it fit, not by putting the bar back. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: #10141c; color: #dfe6f0;
@@ -42,28 +49,149 @@ button:disabled { opacity: .4; cursor: default; }
 .action-btn { background: #35558a; }
 
 #main { flex: 1; display: flex; min-height: 0; }
-#board { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 6px 12px; min-width: 0; }
+#board { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 6px 12px; min-width: 0;
+  container-type: size; }
 /* Sections must keep their content height: a shrinking flex child lets card rows
    visually spill over its neighbors instead of making #board scroll. */
 #board > * { flex-shrink: 0; }
-#enemy-row, #my-row { display: flex; align-items: center; gap: 14px; padding: 4px 0; }
-.leader-slot, .base-slot {
-  min-width: 130px; padding: 6px 10px; border: 1px solid #3a4a68; border-radius: 8px;
-  background: #1a2233; text-align: center;
-}
-.base-slot .hp { font-size: 18px; font-weight: 700; color: #7fd18b; }
-.counts { font-size: 13px; color: var(--muted); }
+/* ================= the mat (art/board.png) =================
+   The board art is a de-keystoned photo of the play surface (tools/dekeystone.mjs).
+   It paints every zone outline and every zone label, so the mat is authoritative for
+   layout: zones are positioned as percentages of the mat, matching the painted slots.
+   Percentages — not pixels — because the mat scales with the window.
 
-.arena {
-  position: relative; min-height: 8rem; margin: 4px 0; padding: 6px 8px 6px 64px;
-  border: 1px dashed var(--line); border-radius: 10px;
+   Card size must scale with the mat too, or cards overflow their painted slot on a
+   small window: `container-type: size` + cqw makes --card-board-w a fraction of the
+   mat's own width rather than a fixed rem. */
+#mat {
+  position: relative;
+  /* Width, not height, drives the mat — but it must never grow so tall that it pushes
+     the hand off screen. cq units resolve against #board, so this is "as wide as the
+     board allows, or as wide as ~2/3 of the board's height permits, whichever is less".
+     Clamping the WIDTH (rather than max-height) keeps aspect-ratio honest: a clamped
+     height with a full width would stretch the painted slots away from their zones. */
+  width: min(100cqw, 66cqh * 2048 / 1280);
+  aspect-ratio: 2048 / 1280;   /* the flattened art's own ratio — never letterbox it */
+  margin: 0 auto;
+  background: url('art/board.png') center / 100% 100% no-repeat;
+  container-type: size;
+  --card-board-w: 7.2cqw;
+  /* Contain the board's stacking, for the same reason the hand isolates: arena units
+     layer against each other (up to 200 on hover) and those numbers must not compete
+     in the root context, where they would paint over the preview and the modals. */
+  isolation: isolate;
 }
-.arena-label {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%) rotate(-90deg);
-  transform-origin: center; font-size: 12px; letter-spacing: 2px; color: #55647e;
-  pointer-events: none;
+.mat-zone {
+  position: absolute;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5cqw; line-height: 1.25; text-align: center;
+  color: #dfe6f0; text-shadow: 0 1px 3px #000;
+  overflow: hidden;
 }
-.arena-row { display: flex; flex-wrap: wrap; gap: 6px; min-height: 3rem; }
+
+/* Painted slot rectangles, measured off art/board.png. Left/top/width/height so a
+   zone stays glued to its outline at any mat size. */
+#enemy-deck    { left:  3.1%; top:  3.8%; width: 12.5%; height: 18.4%; }
+#enemy-discard { left: 18.9%; top:  3.8%; width: 12.7%; height: 18.4%; }
+#enemy-res     { left: 36.9%; top:  3.6%; width: 33.5%; height: 18.4%; }
+#enemy-base    { left: 75.0%; top:  3.8%; width: 10.0%; height: 18.4%; }
+#enemy-leader  { left: 86.3%; top:  3.8%; width:  9.9%; height: 18.4%; }
+
+#arena-ground  { left:  0.9%; top: 27.6%; width: 48.4%; height: 48.8%; }
+#arena-space   { left: 50.6%; top: 29.0%; width: 48.9%; height: 47.0%; }
+
+/* The bottom row's labels are painted ABOVE its boxes (the top row's sit below), so
+   these tops are the box edge at y=1062 of 1280 — not the label. Two percent higher
+   and the cards ride over the lettering. */
+#my-base       { left:  2.0%; top: 82.9%; width: 11.5%; height: 17.1%; }
+#my-leader     { left: 14.8%; top: 82.9%; width: 10.2%; height: 17.1%; }
+#my-deck       { left: 32.5%; top: 83.0%; width: 11.9%; height: 17.0%; }
+#my-discard    { left: 46.6%; top: 83.0%; width: 13.4%; height: 17.0%; }
+#my-res        { left: 64.7%; top: 83.3%; width: 34.8%; height: 16.7%; }
+
+/* The SINGLE-CARD slots hold one face sized to the painted box by HEIGHT — those slots
+   are wider than 5:7, so fitting by width would overflow them vertically. This must NOT
+   reach the arenas: an arena holds a variable number of units, and a card told to fill
+   its row's height grows without limit as the row does. */
+.pile-slot .card, .base-slot .card, .leader-slot .card, .res-fan > .card {
+  height: 100%; width: auto; aspect-ratio: 5 / 7;
+}
+/* Padding here is in cqw, never %: percentage padding resolves against WIDTH even
+   vertically, so on these wide slots a "2%" top pad silently eats a quarter of the
+   card's height — and the resources fan's math depends on knowing the card's width. */
+.pile-slot, .base-slot, .leader-slot { padding: .3cqw 0; }
+.res-slot { justify-content: flex-start; padding: 0 .5cqw; }
+
+/* A live number over the card face: pile depth, resources ready, leader readiness.
+   Bottom-anchored so it never covers the art the slot is there to show. */
+.zone-badge {
+  position: absolute; left: 50%; bottom: 3%; transform: translateX(-50%);
+  z-index: 4; padding: .1em .5em; border-radius: .5em;
+  background: rgba(5, 8, 14, .82); border: 1px solid #3a4a68;
+  font-size: 1.5cqw; font-weight: 700; color: #cfe0ff; white-space: nowrap;
+}
+.zone-badge-alt { bottom: auto; top: 3%; color: var(--accent); }
+
+/* A pile is drawn as a stack: backing layers peek out behind the top card, and more
+   of them appear as the pile grows, so the deck visibly thins over a game. */
+.pile-stack { position: relative; height: 100%; aspect-ratio: 5 / 7; }
+.pile-stack > .card { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pile-layer {
+  position: absolute; inset: 0; border-radius: 9px;
+  border: 2px solid #33415e; background: #16203a;
+}
+
+/* Resources fan. The margin goes NEGATIVE on its own once the cards stop fitting:
+   min() picks the ordinary gap while there is room and an overlap once there is not,
+   so a 2-resource opening and a 20-resource late game both sit inside the painted box
+   with no JS measuring anything. --n is the only thing ui.js has to supply.
+
+   The two geometry numbers are derived, not guessed: the mat is 1.6:1, so its height is
+   62.5cqw; a slot 18.4% tall is 11.5cqw tall; a fan at 90% of that is 10.35cqw tall; and
+   a 5:7 card that tall is 7.4cqw wide. The two resources slots differ slightly in size,
+   so each states its own pair. */
+.res-fan {
+  --gap: .5cqw;
+  display: flex; height: 90%; align-items: center;
+}
+#enemy-res .res-fan { --card-w: 7.4cqw; --row-w: 32.5cqw; }
+#my-res    .res-fan { --card-w: 6.7cqw; --row-w: 33.8cqw; }
+.res-fan > .card + .card {
+  margin-left: min(var(--gap), (var(--row-w) - var(--card-w) * var(--n)) / (var(--n) - 1));
+}
+/* Spent, not tapped 90°: a few degrees reads at a glance and costs no extra width,
+   which matters when twenty of these are already overlapping. */
+.res-fan > .card.is-spent { transform: rotate(7deg); filter: brightness(.72); }
+
+.leader-slot .card.is-deployed { filter: grayscale(.7) brightness(.6); }
+
+/* Units sit inside the painted arena box: theirs along the top edge, mine along the
+   bottom, so the two sides never interleave. */
+.arena { flex-direction: column; justify-content: space-between; padding: 1.2% 1%; gap: 1.5%; }
+
+/* Arena cards are ONE fixed size — never sized to their container. Both rows have to
+   stay visible at once, so a unit must not grow just because its side has few units or
+   its row is tall. --card-board-w is a share of the mat, so the whole board scales
+   together and a card never outgrows the painted arena on a small window. */
+.arena .card { width: var(--card-board-w); height: auto; aspect-ratio: 5 / 7; flex: none; }
+
+/* One line per side, always: the row overlaps rather than wrapping, because a wrapped
+   second line would push the opponent's row out of the painted box. Same self-adjusting
+   margin as the hand and the resources row — ui.js supplies --n, min() takes the plain
+   gap while the units fit and goes negative once they don't. */
+.arena-row {
+  display: flex; flex-wrap: nowrap; align-items: flex-start;
+  width: 100%; min-height: 0; --gap: .6cqw;
+}
+.arena .mine-row { align-items: flex-end; }
+.arena-row > .card + .card {
+  margin-left: min(var(--gap), (100% - var(--card-board-w) * var(--n)) / (var(--n) - 1));
+}
+/* Later units stack on top, and the one under the pointer comes fully clear. */
+.arena-row > .card { position: relative; z-index: var(--z, 10); }
+.arena-row > .card:hover, .arena-row > .card:focus { z-index: 200; }
+
+#enemy-hand-line { font-size: 13px; color: var(--muted); padding: 4px 0; }
 
 /* ================= the card (SPEC §1–§6) ================= */
 .card {
@@ -270,6 +398,34 @@ button:disabled { opacity: .4; cursor: default; }
 .inspect-body { max-width: min(92vw, 46rem); max-height: 94dvh; overflow-y: auto; }
 .inspect-body .preview-row { flex-wrap: wrap; }
 
+/* Zone browser: the inspector's overlay idiom, but a grid of a whole pile. */
+.browse-overlay {
+  position: fixed; inset: 0; z-index: 52; display: none;
+  background: rgba(4,7,13,.78); place-items: center;
+  backdrop-filter: blur(2px);
+}
+.browse-overlay.open { display: grid; }
+.browse-body {
+  width: min(92vw, 60rem); max-height: 88dvh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid #3a4a68; border-radius: 12px;
+  padding: 14px 16px; box-shadow: 0 18px 48px rgba(0,0,0,.6);
+}
+.browse-head { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; }
+.browse-title { font-size: 18px; font-weight: 700; }
+.browse-note { font-size: 12px; color: var(--muted); }
+.browse-close { margin-left: auto; }
+.browse-empty { color: var(--muted); padding: 18px 2px; }
+.browse-grid {
+  display: flex; flex-wrap: wrap; gap: 10px; overflow-y: auto;
+  align-content: flex-start; padding: 2px;
+}
+/* A pile you can look through says so on hover; an empty one carries no such class.
+   The cue is a glow on the ZONE, not brightness on the cards: a card filter here would
+   outrank .is-spent and quietly undo the dimming that marks a spent resource. */
+.mat-zone.is-browsable { cursor: pointer; }
+.mat-zone.is-browsable:hover { box-shadow: inset 0 0 0 2px var(--role-selected); border-radius: 8px; }
+.mat-zone.is-browsable:focus-visible { outline: 2px solid var(--role-selected); outline-offset: -2px; }
+
 #spotlight {
   position: fixed; left: 50%; top: 50%; z-index: 55;
   filter: drop-shadow(0 12px 32px rgba(0,0,0,.65));
@@ -298,8 +454,67 @@ button:disabled { opacity: .4; cursor: default; }
 .choice-chip .action-btn { font-size: 12px; padding: 4px 8px; max-width: 9rem; }
 
 #hand-bar { display: flex; align-items: flex-end; gap: 8px; padding: 6px 0 2px; }
-#hand { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-start; }
-#hand .card { flex: none; }
+
+/* The hand is an OVERLAP FAN (FANNING-SPEC §2, Model B): one row, never wrapping,
+   cards sliding over each other as the hand grows. Model B rather than the arc fan
+   because it costs nothing the arc costs — no rotation means hit testing, the drag
+   clone, and the preview anchor all keep working exactly as they did (§7–§9), and
+   unlike an arc fan it can still fall back to a scrolling row.
+   Same self-adjusting margin as the resources row: min() takes the ordinary gap while
+   the cards fit and goes negative once they don't. Here the available width is just
+   100% — a percentage margin resolves against the flex container — so ui.js only has
+   to report --n. */
+#hand {
+  --gap: 6px;
+  /* Never overlap tighter than this: the visible sliver of an occluded card has to
+     carry the left edge of its art, or the hand stops being readable (§4). ~21% of
+     the 8rem card. Past that the row scrolls rather than compressing further. */
+  display: flex; flex-wrap: nowrap; justify-content: flex-start;
+  overflow: hidden;
+  padding-top: 6px;      /* headroom for the hover lift — the row clips it otherwise */
+  /* Load-bearing: the overlap resolves 100% against THIS element, so its width must
+     come from the bar, not from its own content. Left to size to content, a hand that
+     overlaps gets narrower, which tightens the overlap, which narrows it again — every
+     hand collapses to the tightest overlap regardless of how much room there is. */
+  flex: 1 1 auto; min-width: 0;
+  /* Contain the fan's stacking. The cards run 10..200 so they layer against each other;
+     without a stacking context of its own those numbers compete in the ROOT context and
+     a hovered card (200) paints over every overlay on the page — the preview at 60, but
+     equally the inspector, the choice modal and the zone browser. Isolating keeps the
+     whole hand as one layer down here, where it belongs. */
+  isolation: isolate;
+}
+#hand .card { flex: none; position: relative; z-index: var(--z, 10); }
+/* No floor on the overlap: with scrollbars gone, a floor that stops the fan shrinking
+   would push the newest cards off the end where nothing could reach them. The fan
+   always fits, however tight, and hover reveals whatever the sliver cannot show. */
+#hand .card + .card {
+  margin-left: min(var(--gap), (100% - var(--card-hand-w) * var(--n)) / (var(--n) - 1));
+}
+/* ui.js gives each card an increasing --z so later cards stack on top. A hovered or
+   focused card must come out from under its neighbour entirely, or the lift just moves
+   it behind the same occluder (§5). */
+#hand .card:hover, #hand .card:focus { z-index: 200; }
+
+/* Once the cards overlap (ui.js measures and sets .is-fanned), a covered card's text
+   plate is noise: a dozen names each truncated to a few characters crowd together and
+   read as one card's words spilling onto the next. The sliver carries the art instead
+   — §4's "most identifying feature" — with the cost pip, which is small and top-left,
+   still legible. The uncovered card keeps its plate, and hover restores any card's.
+
+   Toggled outright, with no transition: a transition here has the same background-tab
+   failure mode §6 warns about for rAF — a hand re-rendered while the tab is hidden
+   would come back with its plates stranded at the start of an animation that never ran. */
+#hand.is-fanned .card:not(:last-child):not(:hover):not(:focus) .card-plate {
+  visibility: hidden;
+}
+
+/* Touch and narrow screens: fingers are imprecise against thin slivers and there is
+   no hover to reveal an occluded card, so drop the overlap and scroll (§12). */
+@media (max-width: 620px), (hover: none) {
+  #hand { gap: var(--gap); }
+  #hand .card + .card { margin-left: 0; }
+}
 
 /* ============ side panel: prompt, battle, recent, log (SPEC part one) ============
    Ordered by how far each looks back: what the game wants NOW, the battle in flight,

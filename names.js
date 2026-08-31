@@ -50,6 +50,13 @@
       youWin: 'Victory!', youLose: 'Defeat', skip: 'Skip', chooseTarget: 'Choose a target',
       decline: 'Decline', keep: 'Keep hand', mulligan: 'Mulligan', undo: 'Undo',
       newGame: 'New game',
+      // Zone browser (click a pile to look through it).
+      browseClose: 'Close',
+      browseEmpty: 'Nothing here yet.',
+      yourDiscard: 'Your discard pile', theirDiscard: 'Opponent discard pile',
+      yourResources: 'Your resources',
+      browseNewestFirst: 'Most recent first',
+      browseResourceNote: 'Face down on the board — only you may look.',
     },
     // How-to-play text (rendered by js/help.js). Original tutorial wording.
     help: {

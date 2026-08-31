@@ -64,7 +64,9 @@
 
   // ---- the renderer (§1) ---------------------------------------------------
   // ref: {cardId, unit?, hidden?} — unit is a live board instance when present.
-  // opts: {size: 'board'|'hand'|'preview', state?}
+  // opts: {size: 'board'|'hand'|'preview', state?, basePlayer?}
+  //   basePlayer — the seat a base card belongs to, so its HP reads from the right
+  //   player when both decks run the same base.
   SB.renderCard = function (ref, opts) {
     const size = opts.size || 'board';
     const state = opts.state || null;
@@ -167,7 +169,7 @@
       if (lines.length) plate.appendChild(detail);
     }
 
-    const stats = statLine(card, def, ref.unit, state);
+    const stats = statLine(card, def, ref.unit, state, opts.basePlayer);
     if (stats) plate.appendChild(stats);
     root.appendChild(plate);
 
@@ -176,10 +178,10 @@
     return root;
   };
 
-  function statLine(card, def, unit, state) {
+  function statLine(card, def, unit, state, basePlayer) {
     if (card.type === 'base') {
       const row = el('div', 'card-stats');
-      const dmg = state ? findBaseDamage(state, card.id) : 0;
+      const dmg = state ? findBaseDamage(state, card.id, basePlayer) : 0;
       row.appendChild(el('span', 'stat hp' + (dmg > 0 ? ' damaged' : ''), (card.hp - dmg) + '/' + card.hp));
       return row;
     }
@@ -196,7 +198,11 @@
     return row;
   }
 
-  function findBaseDamage(state, cardId) {
+  // Which player's base this is cannot be inferred from the card id: the two decks may
+  // run the SAME base card (deck-p6a and deck-p6b both use sec-022), and matching by id
+  // alone reports player 0's damage on both boards. Callers that know the seat pass it.
+  function findBaseDamage(state, cardId, basePlayer) {
+    if (basePlayer != null && state.players[basePlayer]) return state.players[basePlayer].base.damage;
     for (let i = 0; i < state.players.length; i++) {
       if (state.players[i].base.cardId === cardId) return state.players[i].base.damage;
     }

@@ -234,7 +234,7 @@
     renderArena($('arena-space'), s, 'space', acts);
     renderArena($('arena-ground'), s, 'ground', acts);
     renderHand(s, acts);
-    renderResources(s);
+    renderZones(s);
     renderChoices(s, acts);
     SB.logPanel.renderBattle(s, $('battle-line'), UI.humanSeat);
     SB.logPanel.renderRecent(s, $('recent'), UI.humanSeat);
@@ -288,13 +288,19 @@
     return u ? SB.names.card(u.cardId) : '?';
   }
 
+  // The mat paints a slot for every zone, so each of these draws the real card face
+  // into its slot rather than a text summary. Live values (base HP, leader readiness,
+  // pile depth) ride on top as badges — the card art stays the thing you recognise.
+
   function renderBase(node, s, playerIdx, acts) {
     node.textContent = '';
     const base = s.players[playerIdx].base;
-    const card = SB.card(base.cardId);
     node.dataset.basePlayer = playerIdx;
-    node.appendChild(el('div', 'card-name', SB.names.card(base.cardId)));
-    node.appendChild(el('div', 'hp', (card.hp - base.damage) + '/' + card.hp));
+    // basePlayer, not the card id: both decks may run the same base card.
+    node.appendChild(SB.renderCard({ cardId: base.cardId },
+      { size: 'board', state: s, basePlayer: playerIdx }));
+    node.tabIndex = 0;
+    SB.preview && SB.preview.attach(node, base.cardId, null, function () { return UI.state; });
     const choice = choiceFor(s, acts, { kind: 'base', player: playerIdx });
     node.classList.toggle('role-target', !!choice);
     node.onclick = choice ? function () { if (!Drag.justDragged()) UI.doAction(choice); } : null;
@@ -303,14 +309,62 @@
   function renderLeader(node, s, playerIdx) {
     node.textContent = '';
     const L = s.players[playerIdx].leader;
-    node.appendChild(el('div', 'card-name', SB.names.card(L.cardId)));
-    const bits = [];
-    bits.push(L.deployed ? SB.names.ui.deployed : (L.exhausted ? SB.names.ui.exhausted : SB.names.ui.ready));
-    if (s.players[playerIdx].force) bits.push(SB.names.ui.forceToken);
-    if (s.players[playerIdx].credits > 0) bits.push('¢' + s.players[playerIdx].credits);
-    node.appendChild(el('div', 'sub', bits.join(' · ')));
+    const card = SB.renderCard({ cardId: L.cardId }, { size: 'board', state: s });
+    // A deployed leader is fighting in an arena; the slot keeps its face so the seat
+    // stays identifiable, but greyed so it does not read as still available here.
+    if (L.deployed) card.classList.add('is-deployed');
+    else if (L.exhausted) card.classList.add('is-rested');
+    node.appendChild(card);
+    node.appendChild(el('div', 'zone-badge',
+      L.deployed ? SB.names.ui.deployed : (L.exhausted ? SB.names.ui.exhausted : SB.names.ui.ready)));
+    const extra = [];
+    if (s.players[playerIdx].force) extra.push(SB.names.ui.forceToken);
+    if (s.players[playerIdx].credits > 0) extra.push('¢' + s.players[playerIdx].credits);
+    if (extra.length) node.appendChild(el('div', 'zone-badge zone-badge-alt', extra.join(' · ')));
     node.tabIndex = 0;
     SB.preview && SB.preview.attach(node, L.cardId, null, function () { return UI.state; });
+  }
+
+  // A pile is drawn as a stack: a few backing layers behind the top card, more of them
+  // as the pile grows, so you can see the deck thinning without reading the number.
+  // topCardId null => face down (the draw deck: its top card is not yours to see).
+  function renderPile(node, s, cards, topCardId) {
+    node.textContent = '';
+    if (!cards.length) { node.appendChild(el('div', 'zone-badge', '0')); return; }
+    const stack = el('div', 'pile-stack');
+    const layers = Math.min(5, Math.floor(cards.length / 6));
+    for (let i = layers; i >= 1; i--) {
+      const lay = el('div', 'pile-layer');
+      lay.style.transform = 'translate(' + (i * -0.28) + 'cqw, ' + (i * -0.28) + 'cqw)';
+      stack.appendChild(lay);
+    }
+    stack.appendChild(topCardId
+      ? SB.renderCard({ cardId: topCardId }, { size: 'board', state: s })
+      : SB.renderCard({ cardId: cards[cards.length - 1].cardId, hidden: true }, { size: 'board' }));
+    node.appendChild(stack);
+    node.appendChild(el('div', 'zone-badge', String(cards.length)));
+    if (topCardId) {
+      node.tabIndex = 0;
+      SB.preview && SB.preview.attach(node, topCardId, null, function () { return UI.state; });
+    }
+  }
+
+  // Resources are face down — their identities must stay hidden or a trick card played
+  // from a resource would be readable in advance. Exhausted ones tip a few degrees, the
+  // tabletop's "tapped", and the whole row overlaps so a 20-resource late game still fits.
+  function renderResourceRow(node, res) {
+    node.textContent = '';
+    const fan = el('div', 'res-fan');
+    fan.style.setProperty('--n', String(res.length));
+    res.forEach(function (r) {
+      const c = SB.renderCard({ cardId: r.instance ? r.instance.cardId : r.cardId, hidden: true },
+        { size: 'board' });
+      if (r.exhausted) c.classList.add('is-spent');
+      fan.appendChild(c);
+    });
+    node.appendChild(fan);
+    const ready = res.filter(function (r) { return !r.exhausted; }).length;
+    node.appendChild(el('div', 'zone-badge', ready + '/' + res.length));
   }
 
   function choiceFor(s, acts, targetLike) {
@@ -368,13 +422,21 @@
   }
 
   function renderArena(node, s, arena, acts) {
-    let theirs = node.querySelector('.theirs-row');
     node.textContent = '';
-    node.appendChild(el('div', 'arena-label', arena === 'space' ? 'Space' : 'Ground'));
-    theirs = el('div', 'arena-row theirs-row');
+    // No label element: the mat art paints "GROUND ARENA" / "SPACE ARENA" itself.
+    const theirs = el('div', 'arena-row theirs-row');
     const mine = el('div', 'arena-row mine-row');
     s[arena].forEach(function (u) {
       (u.owner === UI.humanSeat ? mine : theirs).appendChild(unitNode(s, u, acts));
+    });
+    // Each row is one line that overlaps rather than wrapping, so both sides stay in
+    // the painted box. The CSS works the overlap out from the count; the per-card --z
+    // keeps later units on top so each one's visible sliver hit-tests to itself.
+    [theirs, mine].forEach(function (row) {
+      row.style.setProperty('--n', String(row.children.length));
+      Array.prototype.forEach.call(row.children, function (c, i) {
+        c.style.setProperty('--z', String(10 + i));
+      });
     });
     node.appendChild(theirs);
     node.appendChild(mine);
@@ -423,8 +485,26 @@
         });
       });
       SB.preview && SB.preview.attach(cardNode, inst.cardId, null, function () { return UI.state; });
+      // Later cards stack on top (FANNING-SPEC §4), so the newest is fully visible and
+      // every other card's visible sliver hit-tests to itself. Explicit — DOM order
+      // alone does not settle it here, and a covered sliver means clicking a card and
+      // getting its neighbour. As a custom property, not an inline z-index, so the
+      // stylesheet's hover/focus raise still wins over it.
+      cardNode.style.setProperty('--z', String(10 + i));
       node.appendChild(cardNode);
     });
+    // The hand is one row, always (FANNING-SPEC §2, Model B: overlap, no rotation).
+    // The count is all the CSS needs — it works out the overlap itself.
+    node.style.setProperty('--n', String(p.hand.length));
+    // Whether the row actually overlaps is a layout outcome, not something either side
+    // knows up front, so measure it and tell the stylesheet. A forced synchronous read,
+    // never rAF: rAF does not fire in a background tab, and the hand would come back
+    // with its text in the wrong state (FANNING-SPEC §6).
+    const cards = node.children;
+    const overlapped = cards.length > 1 &&
+      cards[1].getBoundingClientRect().left - cards[0].getBoundingClientRect().left <
+        cards[0].getBoundingClientRect().width - 1;
+    node.classList.toggle('is-fanned', overlapped);
 
     const decline = acts.find(function (a) {
       return a.type === 'resourceCard' && a.player === UI.humanSeat && a.handIndex === -1;
@@ -442,15 +522,53 @@
     }
   }
 
-  function renderResources(s) {
-    [['my-res', UI.humanSeat], ['enemy-res', SB.other(UI.humanSeat)]].forEach(function (pair) {
-      const res = s.players[pair[1]].resources;
-      const ready = res.filter(function (r) { return !r.exhausted; }).length;
-      $(pair[0]).textContent = ready + '/' + res.length +
-        (s.players[pair[1]].credits > 0 ? ' +¢' + s.players[pair[1]].credits : '');
-    });
+  // Make a zone open a read-only browser on click (and on Enter/Space, so the board
+  // stays keyboard-reachable). Zones with nothing in them are left inert rather than
+  // opening an empty overlay.
+  function makeBrowsable(node, title, cards, s, note) {
+    // Reset first: undo can shrink a pile back to empty, and the node survives renders.
+    node.classList.remove('is-browsable');
+    node.onclick = null; node.onkeydown = null;
+    node.removeAttribute('role');
+    if (!cards.length) return;               // inert, and not styled as clickable
+    node.classList.add('is-browsable');
+    function open() {
+      if (Drag.justDragged()) return;      // a drag that ended here is not a click
+      SB.zoneBrowser.open(title, cards, s, note);
+    }
+    node.onclick = open;
+    node.tabIndex = 0;
+    node.setAttribute('role', 'button');
+    node.onkeydown = function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    };
+  }
+
+  function renderZones(s) {
     $('enemy-hand-count').textContent = String(s.players[SB.other(UI.humanSeat)].hand.length);
-    $('my-deck-count').textContent = String(s.players[UI.humanSeat].deck.length);
+    [['my', UI.humanSeat], ['enemy', SB.other(UI.humanSeat)]].forEach(function (pair) {
+      const p = s.players[pair[1]];
+      const mine = pair[1] === UI.humanSeat;
+      renderPile($(pair[0] + '-deck'), s, p.deck, null);      // face down: not yours to see
+      // The discard is public in both directions, so its top card shows its face.
+      renderPile($(pair[0] + '-discard'), s, p.discard,
+        p.discard.length ? p.discard[p.discard.length - 1].cardId : null);
+      renderResourceRow($(pair[0] + '-res'), p.resources);
+
+      // Both discards browse — a discard pile is public information either way. Newest
+      // first, because "what just died" is what you open it to find out.
+      makeBrowsable($(pair[0] + '-discard'),
+        mine ? SB.names.ui.yourDiscard : SB.names.ui.theirDiscard,
+        p.discard.slice().reverse(), s, SB.names.ui.browseNewestFirst);
+      // Only YOUR resources browse. They are face down to everyone, but you banked
+      // them and know what they are; the opponent's stay hidden or a Smuggle played
+      // out of their resource row would be readable in advance.
+      if (mine) {
+        makeBrowsable($(pair[0] + '-res'), SB.names.ui.yourResources,
+          p.resources.map(function (r) { return r.instance || r; }), s,
+          SB.names.ui.browseResourceNote);
+      }
+    });
   }
 
   // Action types with spatial affordances elsewhere in the UI.

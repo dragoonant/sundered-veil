@@ -23,18 +23,27 @@
   </div>
   <div id="main">
   <div id="board">
-    <div id="enemy-row">
-      <div id="enemy-leader" class="leader-slot"></div>
-      <div id="enemy-base" class="base-slot"></div>
-      <div class="counts">Hand: <span id="enemy-hand-count"></span> · Res: <span id="enemy-res"></span></div>
+    <!-- The mat art paints every zone's outline and its label, so the DOM carries no
+         label text of its own: each .mat-zone is positioned onto its painted slot by
+         percentage in styles.css. Order here is reading order, not layout order. -->
+    <div id="mat">
+      <div id="enemy-deck" class="mat-zone pile-slot"></div>
+      <div id="enemy-discard" class="mat-zone pile-slot"></div>
+      <div id="enemy-res" class="mat-zone res-slot"></div>
+      <div id="enemy-base" class="mat-zone base-slot"></div>
+      <div id="enemy-leader" class="mat-zone leader-slot"></div>
+
+      <div id="arena-ground" class="mat-zone arena"></div>
+      <div id="arena-space" class="mat-zone arena"></div>
+
+      <div id="my-base" class="mat-zone base-slot"></div>
+      <div id="my-leader" class="mat-zone leader-slot"></div>
+      <div id="my-deck" class="mat-zone pile-slot"></div>
+      <div id="my-discard" class="mat-zone pile-slot"></div>
+      <div id="my-res" class="mat-zone res-slot"></div>
     </div>
-    <div id="arena-space" class="arena"><div class="arena-label">Space</div></div>
-    <div id="arena-ground" class="arena"><div class="arena-label">Ground</div></div>
-    <div id="my-row">
-      <div id="my-leader" class="leader-slot"></div>
-      <div id="my-base" class="base-slot"></div>
-      <div class="counts">Deck: <span id="my-deck-count"></span> · Res: <span id="my-res"></span></div>
-    </div>
+    <!-- Their hand is the one count the mat has no slot for — it is not a board zone. -->
+    <div id="enemy-hand-line">Their hand: <span id="enemy-hand-count"></span></div>
     <div id="choice-bar"></div>
     <div id="mulligan-bar" style="display:none">
       <button id="keep-btn">Keep hand</button>

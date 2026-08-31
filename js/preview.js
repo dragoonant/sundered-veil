@@ -131,6 +131,59 @@
   };
   function escClose(e) { if (e.key === 'Escape') SB.inspector.close(); }
 
+  // ---- B2. zone browser (look through a pile) ------------------------------
+  // Same overlay idiom as the inspector, but a grid of every card in a zone rather
+  // than one card enlarged. Read-only: it never offers an action, so it cannot be
+  // confused with the choice modal (LOG-AND-TARGETING §13), which does.
+  //
+  // Callers decide what may be browsed. This function will happily render whatever
+  // it is handed, so the information boundary lives at the call site: the opponent's
+  // resources are never passed here.
+  SB.zoneBrowser = {
+    open: function (title, cards, state, note) {
+      const box = ensure('zone-browser', 'browse-overlay');
+      box.textContent = '';
+      const body = el('div', 'browse-body');
+      body.addEventListener('click', function (e) { e.stopPropagation(); });
+
+      const head = el('div', 'browse-head');
+      head.appendChild(el('div', 'browse-title', title + ' (' + cards.length + ')'));
+      if (note) head.appendChild(el('div', 'browse-note', note));
+      const closeBtn = el('button', 'browse-close', SB.names.ui.browseClose);
+      closeBtn.onclick = SB.zoneBrowser.close;
+      head.appendChild(closeBtn);
+      body.appendChild(head);
+
+      if (!cards.length) {
+        body.appendChild(el('div', 'browse-empty', SB.names.ui.browseEmpty));
+      } else {
+        const grid = el('div', 'browse-grid');
+        cards.forEach(function (inst) {
+          const cardId = inst.cardId || inst;
+          const node = SB.renderCard({ cardId: cardId }, { size: 'hand', state: state });
+          node.tabIndex = 0;
+          // Hover for the full rules text — the hand-size face alone does not carry it.
+          Preview.attach(node, cardId, null, function () { return state; });
+          grid.appendChild(node);
+        });
+        body.appendChild(grid);
+      }
+
+      box.appendChild(body);
+      box.classList.add('open');
+      box.onclick = SB.zoneBrowser.close;
+      document.addEventListener('keydown', escCloseBrowse);
+      closeBtn.focus();
+    },
+    close: function () {
+      const box = document.getElementById('zone-browser');
+      if (box) box.classList.remove('open');
+      Preview.hide();          // a preview armed from inside the overlay must not outlive it
+      document.removeEventListener('keydown', escCloseBrowse);
+    },
+  };
+  function escCloseBrowse(e) { if (e.key === 'Escape') SB.zoneBrowser.close(); }
+
   // ---- C. spotlight (played card) -----------------------------------------
   const TRAVEL_MS = 500, HOLD_MS = 1200, FADE_MS = 250;
   let spotTimer = null;
