@@ -21,6 +21,26 @@
     return proto;
   }
 
+  // The card back is one shared image across every hidden card, so it gets the same
+  // decoded-prototype treatment as card art (§11) — and needs it more: a full deck
+  // stack plus a twenty-card resource row renders dozens of backs in a single pass.
+  let backProto = null;
+  let backFailed = false;
+  function cardBackProto() {
+    if (!backProto) {
+      const proto = new Image();
+      proto.className = 'art card-back-art';
+      proto.alt = '';
+      proto.draggable = false;
+      proto.setAttribute('aria-hidden', 'true');
+      proto.decoding = 'sync';
+      proto.src = SB.cardBackUrl ? SB.cardBackUrl() : 'art/cardback.jpg';
+      proto.onerror = function () { backFailed = true; };
+      backProto = proto;
+    }
+    return backProto;
+  }
+
   // Deterministic SVG fallback seeded from the card id (§3): consistent across
   // runs, distinct between neighbors, faction-tinted.
   function svgFallback(cardId) {
@@ -77,7 +97,15 @@
 
     if (ref.hidden) {                       // face-down variant
       root.classList.add('card-back');
+      // Keep the ✦ underneath rather than instead: it shows through while the image
+      // is still decoding, and stays put if the file is missing, so a face-down card
+      // is never a blank rectangle.
       root.appendChild(el('div', 'back-mark', '✦'));
+      if (!backFailed) {
+        const back = cardBackProto().cloneNode(false);
+        back.onerror = function () { backFailed = true; back.remove(); };
+        root.appendChild(back);
+      }
       return root;
     }
     let card;

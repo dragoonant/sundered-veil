@@ -305,8 +305,16 @@ button:disabled { opacity: .4; cursor: default; }
 /* state + badges */
 .is-rested { transform: rotate(4deg); opacity: .72; }
 .is-rested:hover { transform: rotate(4deg) translateY(-3px); }
+/* Face-down cards carry the shared back art, cropped to fill whatever size the card
+   is rendered at. The ✦ sits underneath as the decoding/missing-file floor. */
 .card-back { background: #1b2436; display: grid; place-items: center; }
-.back-mark { font-size: 1.6em; color: #3d4c6b; }
+.back-mark { grid-area: 1 / 1; font-size: 1.6em; color: #3d4c6b; }
+.card-back-art {
+  grid-area: 1 / 1;
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+  pointer-events: none;      /* decorative, and it must not eat card gestures */
+}
 .badge {
   position: absolute; top: 1.35rem; right: 2px; z-index: 3; font-size: .58em; padding: 0 4px;
   border-radius: 8px; background: #35558a;
