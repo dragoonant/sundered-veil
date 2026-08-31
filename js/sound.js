@@ -161,6 +161,8 @@
     if (Music.ended) return;
     Music.ended = true;
     fadeOutCurrent(true);
+    // The end-of-match video brings its own audio; let it own the finale.
+    if (SB.endVideo && SB.endVideo.claim(win)) return;
     const buf = Music.endBuffers && Music.endBuffers[win ? 'win' : 'loss'];
     const ctx = actx();
     if (buf && ctx) {
@@ -188,6 +190,23 @@
 
   // ======================= public surface =======================
   SB.sound = {
+    isMuted: function () { return muted; },
+    // Handed back by js/endvideo.js when the clip cannot play.
+    playEndingFallback: function (win) {
+      if (muted) return;
+      const buf = Music.endBuffers && Music.endBuffers[win ? "win" : "loss"];
+      const ctx = actx();
+      if (buf && ctx) {
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const g = ctx.createGain();
+        g.gain.value = 0.35;
+        src.connect(g).connect(ctx.destination);
+        src.start(ctx.currentTime + 0.4);
+      } else {
+        setTimeout(function () { synthEnding(win); }, 400);
+      }
+    },
     toggleMute: function () {
       muted = !muted;
       if (muted) fadeOutCurrent(true);
@@ -214,6 +233,7 @@
     reset: function () {
       lastLogLen = 0;
       Music.ended = false;
+      if (SB.endVideo) SB.endVideo.reset();
       fadeOutCurrent(true);
       Music.tier = 0;
       if (Music.started && SB.ui && SB.ui.state) updateMusic(SB.ui.state);

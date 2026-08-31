@@ -47,7 +47,7 @@
       initiative: 'Initiative', pass: 'Pass', claim: 'Take initiative',
       deploy: 'Deploy leader', leaderAbility: 'Leader ability',
       exhausted: 'Exhausted', ready: 'Ready', deployed: 'Deployed',
-      youWin: 'Victory!', youLose: 'Defeat', chooseTarget: 'Choose a target',
+      youWin: 'Victory!', youLose: 'Defeat', skip: 'Skip', chooseTarget: 'Choose a target',
       decline: 'Decline', keep: 'Keep hand', mulligan: 'Mulligan', undo: 'Undo',
       newGame: 'New game',
     },

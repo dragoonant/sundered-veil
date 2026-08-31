@@ -44,3 +44,26 @@ carries the sci-fi grounding + background mandate. Per-card subject lines must f
 13. **Restate chibi proportions in the subject line** for any card with humanoid figures
     in a detailed environment — the environment detail outcompetes the style block and
     the figures drift realistic.
+
+## Full-run findings (414-card run, v2 → v3 fix pass)
+
+14. **Crowded public settings are the single biggest text source.** `market`, `concourse`,
+    `cantina`, `alley`, `plaza`, `spaceport`, `city street` — FLUX fills all of these with
+    shop fronts and glyph signage regardless of the STYLE block. Describe the space
+    physically instead: "a bare metal walkway", "a dim room of smooth riveted walls lit by
+    colored light strips". Crowds are fine; storefronts are not.
+15. **Naming a room with an institutional English word prints that word.** "cold blue
+    hearing chamber" rendered a lit sign reading HEARIING. Never name a room by its
+    function; describe its shape, material and light.
+16. **The working energy-blade phrasing is "an ignited plasma blade, a straight glowing
+    <color> beam extending from a short machined metal grip".** "Grip emitting a beam"
+    produces either a metal dagger plus a stray light streak, or a flame-tipped cylinder
+    with no blade. The word `sword` remains banned (rule 11).
+17. **Formal or political dress defaults to present-day Earth** — business suits, shirts
+    and neckties, ordinary casinos with standard playing cards. Every court, senate or
+    officialdom card needs explicit alien-formal vocabulary: "high-collared court mantle",
+    "floor-length court wrap with a tall stiff collar", "glowing translucent chit tiles".
+18. **Regeneration is not monotonic.** Seed variance means re-rolling an image that already
+    passed can make it worse (`sor-220` regressed between two runs of an identical prompt).
+    Only regenerate cards that actually failed, and keep the previous version archived so a
+    good render can be restored.
