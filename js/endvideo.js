@@ -10,11 +10,14 @@
   let shown = false;   // one clip per match
   let node = null;     // the overlay while it is on screen
 
-  function dismiss() {
+  // immediate: pull the overlay out now instead of letting it fade. A new match is
+  // already drawing behind it, so the old clip must not linger over the fresh board.
+  function dismiss(immediate) {
     if (!node) return;
     const n = node;
     node = null;
     n.classList.remove('open');
+    if (immediate) { if (n.parentNode) n.parentNode.removeChild(n); return; }
     setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 400);
   }
 
@@ -60,6 +63,6 @@
       return true;
     },
     // New game / undo past the end: allow the next match its own clip.
-    reset: function () { shown = false; dismiss(); },
+    reset: function () { shown = false; dismiss(true); },
   };
 })(window.SB = window.SB || {});
