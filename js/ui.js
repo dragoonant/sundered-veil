@@ -25,6 +25,7 @@
     UI.state = SB.newGame({ deck0: opts.deck0, deck1: opts.deck1,
       seed: opts.seed || ('g' + Math.floor(Math.random() * 1e9)) });
     UI.aiDifficulty = opts.difficulty || 'mid';
+    if (SB.endVideo) SB.endVideo.reset();
     UI.render();
     UI.maybeAI();
   };
@@ -40,6 +41,7 @@
   };
 
   UI.undo = function () {
+    if (SB.endVideo) SB.endVideo.reset();
     while (UI.history.length > 0) {
       const prev = UI.history.pop();
       if (whoActs(prev) === UI.humanSeat) { UI.state = prev; break; }
@@ -251,6 +253,9 @@
     st.textContent = '';
     if (SB.isTerminal(s)) {
       st.appendChild(el('span', 'big', s.winner === UI.humanSeat ? SB.names.ui.youWin : SB.names.ui.youLose));
+      // The clip may already be running (js/sound.js claims it first); claim() is
+      // idempotent, so this covers the muted / music-never-started case too.
+      if (SB.endVideo) SB.endVideo.claim(s.winner === UI.humanSeat);
       return;
     }
     st.appendChild(el('span', null, SB.names.ui.round + ' ' + s.round + ' — '));
