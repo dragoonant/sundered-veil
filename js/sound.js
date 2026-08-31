@@ -1,7 +1,10 @@
 // sound.js — SFX from structured log entries + the adaptive battle score.
-// Music runs on Web Audio for GAPLESS looping: decoded buffers get their leading/
-// trailing silence trimmed and loop inside those points, so a generated track that
-// ends in quiet never "stops then restarts".
+// Music runs on Web Audio for GAPLESS looping: decoded buffers are trimmed to their
+// SUSTAINED body — an RMS envelope finds where the recorded fade-in has come up and
+// where the closing decrescendo starts, and the loop lives strictly inside those
+// points. Trimming silence alone was not enough: a generated track's fade-out is loud
+// enough to pass a silence test, so the loop sounded like the piece ending and
+// starting again. Playback also begins at full level — only tier switches crossfade.
 //
 // Three intensity tiers keyed to the lowest remaining base HP:
 //   > 20  tier 1 (stately)   |  > 10  tier 2 (urgent)  |  <= 10  tier 3 (frenzied)
@@ -32,7 +35,12 @@
     current: null,        // {tier, source, gain}
     tier: 0, ended: false, started: false,
   };
-  const FADE_S = 1.6;
+  const FADE_S = 1.6;          // crossfade length when the tier changes mid-match
+  const OUT_S = 0.9;           // how fast the outgoing tier gets out of the way
+  // Tier 1 opens the match: quieter and softened, so it reads as tension rather than
+  // a duel already in progress. The later tiers open up in level and brightness.
+  const TIER_GAIN = [0.13, 0.20, 0.27];
+  const TIER_TONE = [1500, 4500, 14000];   // lowpass cutoff, Hz
 
   function actx() {
     if (!Music.ctx) {
@@ -53,14 +61,42 @@
       .catch(function () { return null; });
   }
 
-  // Find the audible span so the loop skips decoder padding and trailing silence.
+  // Loop span = the sustained body of the track. A coarse RMS envelope is measured and
+  // the loop runs from the first to the last window holding a good fraction of the
+  // track's typical level, which drops decoder padding, the recorded fade-in, and the
+  // closing decrescendo that made looping sound like a restart.
+  const spanCache = new WeakMap();
   function audibleSpan(buf) {
+    const cached = spanCache.get(buf);
+    if (cached) return cached;
     const d = buf.getChannelData(0);
-    const thr = 0.004;
-    let a = 0, b = d.length - 1;
-    while (a < d.length && Math.abs(d[a]) < thr) a++;
-    while (b > a && Math.abs(d[b]) < thr) b--;
-    return { start: a / buf.sampleRate, end: (b + 1) / buf.sampleRate };
+    const sr = buf.sampleRate;
+    const win = Math.max(1, Math.round(sr * 0.05));        // 50 ms windows
+    const env = [];
+    for (let i = 0; i + win <= d.length; i += win) {
+      let sum = 0;
+      for (let j = i; j < i + win; j++) sum += d[j] * d[j];
+      env.push(Math.sqrt(sum / win));
+    }
+    let span = { start: 0, end: buf.duration };
+    if (env.length) {
+      // Typical level = median of the windows that are not near-silent.
+      const loud = env.filter(function (v) { return v > 0.004; })
+                      .sort(function (x, y) { return x - y; });
+      const median = loud.length ? loud[Math.floor(loud.length / 2)] : 0;
+      const thr = Math.max(0.004, median * 0.8);
+      let lo = 0, hi = env.length - 1;
+      while (lo < env.length && env[lo] < thr) lo++;
+      while (hi > lo && env[hi] < thr) hi--;
+      if (lo < env.length) {
+        // Nudge inward one window so neither loop edge sits on a ramp.
+        const start = Math.min(lo + 1, hi) * win / sr;
+        const end = Math.min(d.length, (hi + 1) * win) / sr;
+        if (end - start > 1) span = { start: start, end: end };
+      }
+    }
+    spanCache.set(buf, span);
+    return span;
   }
 
   function loadMusic() {
@@ -93,10 +129,14 @@
     src.loopStart = span.start;
     src.loopEnd = span.end;
     src.playbackRate.value = Music.tierRates[tier - 1] || 1;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = TIER_TONE[tier - 1] || 14000;
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + FADE_S);
-    src.connect(gain).connect(ctx.destination);
+    const level = TIER_GAIN[tier - 1] || 0.22;
+    // Straight in at level: the score is meant to be already playing, not to swell up.
+    gain.gain.setValueAtTime(level, ctx.currentTime);
+    src.connect(tone).connect(gain).connect(ctx.destination);
     // When both tiers share one buffer, keep musical position across the switch.
     let offset = span.start;
     if (Music.sharedFallback && Music.current && Music.current.startedAt != null) {
@@ -105,7 +145,7 @@
       offset = span.start + (played % len);
     }
     src.start(0, offset);
-    fadeOutCurrent();
+    fadeOutCurrent(true);   // incoming line is instant; the old one ducks out under it
     Music.current = { tier: tier, source: src, gain: gain, startedAt: ctx.currentTime, rate: src.playbackRate.value };
     Music.tier = tier;
   }
@@ -114,7 +154,7 @@
     if (!Music.current) return;
     const ctx = Music.ctx;
     const old = Music.current;
-    const t = fast ? 0.6 : FADE_S;
+    const t = fast ? OUT_S : FADE_S;
     try {
       old.gain.gain.setValueAtTime(old.gain.gain.value, ctx.currentTime);
       old.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + t);
@@ -236,7 +276,9 @@
       if (SB.endVideo) SB.endVideo.reset();
       fadeOutCurrent(true);
       Music.tier = 0;
-      if (Music.started && SB.ui && SB.ui.state) updateMusic(SB.ui.state);
+      // The old state is still the finished match at this point: replaying its
+      // ending here would re-trigger the end-of-match video over the new game.
+      if (Music.started && SB.ui && SB.ui.state && !SB.isTerminal(SB.ui.state)) updateMusic(SB.ui.state);
     },
     // Kicked off on new game; real playback begins after the first user gesture
     // (browsers gate audio) — the first doAction's updateMusic picks it up.
