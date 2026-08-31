@@ -131,6 +131,23 @@
     T.ok(s2.players[me].leader.exhausted, 'exhausted after defeat');
   });
 
+  T.add('leader defeat: cannot deploy again for the rest of the game', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'nodeploy');
+    const me = s.active;
+    T.giveResources(s, me, 3);
+    s = T.act(s, { type: 'deployLeader' });
+    const lu = SB.allUnits(s, me).find(function (u) { return SB.card(u.cardId).type === 'leader'; });
+    SB.defeatUnit(s, SB.findUnit(s, lu.uid), {});
+    T.ok(s.players[me].leader.defeated, 'flagged defeated');
+    s.active = me;
+    s.players[me].leader.exhausted = false;
+    T.eq(SB.legalActions(s).filter(function (a) {
+      return a.type === 'deployLeader' || a.type === 'deployLeaderPilot';
+    }).length, 0, 'no redeploy offered');
+    T.ok(SB.legalActions(s).some(function (a) { return a.type === 'leaderAction'; }),
+      'leader-side abilities still usable');
+  });
+
   T.add('leader action: exhausts leader, queues effect with choice', function () {
     let s = T.game('fixtureA', 'fixtureB', 'la');
     s.active = 0; s.initiative = 0; // pin to the fixtureA player: its leader grants experience

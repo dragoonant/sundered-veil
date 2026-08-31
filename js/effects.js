@@ -167,6 +167,7 @@
       owner.leader.exhausted = true;
       owner.leader.damage = 0;
       owner.leader.uid = null;
+      owner.leader.defeated = true; // can't deploy again for the rest of the game
     } else if (!card.token) {
       owner.discard.push({ uid: unit.uid, cardId: unit.cardId });
     }
@@ -175,6 +176,7 @@
       if (inst.leaderPilot) {
         const lp = state.players[unit.owner].leader;
         lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+        lp.defeated = true; // defeated along with its bearer: no redeploy
         SB.log(state, { type: 'leaderReturned', player: unit.owner });
       } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
     });
@@ -647,8 +649,10 @@
       }
       u.upgrades.forEach(function (inst) {
         if (inst.leaderPilot) {
+          // Bounced bearer: its upgrades are defeated, the leader pilot included.
           const lp = state.players[u.owner].leader;
           lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+          lp.defeated = true;
         } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
       });
       SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });

@@ -17,7 +17,8 @@
 //   winner: null|0|1|'draw',
 // }
 // player = {
-//   leader: {cardId, deployed:bool, exhausted:bool, damage:int, uid|null},
+//   leader: {cardId, deployed:bool, exhausted:bool, damage:int, uid|null,
+//            defeated:bool},  // a leader defeated as a unit can never deploy again
 //   base: {cardId, damage:int},
 //   hand: [instance], deck: [instance], discard: [instance],
 //   resources: [{instance, exhausted:bool}],
@@ -59,7 +60,8 @@
       const shuffledDeck = SB.shuffled(instances, SB.rng(seed + '|shuffle|' + idx));
       state.players.push({
         deckId: deckId,
-        leader: { cardId: deck.leader, deployed: false, exhausted: false, damage: 0, uid: null },
+        leader: { cardId: deck.leader, deployed: false, exhausted: false, damage: 0, uid: null,
+          defeated: false },
         base: { cardId: deck.base, damage: 0 },
         hand: shuffledDeck.slice(0, 6),
         deck: shuffledDeck.slice(6),

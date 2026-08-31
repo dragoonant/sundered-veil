@@ -140,7 +140,9 @@
     // Leader: deploy epic action / leader-side action abilities.
     const leaderCard = SB.card(p.leader.cardId);
     if (!p.leader.deployed) {
-      if (p.resources.length >= leaderCard.deployCost) {
+      // A leader defeated as a unit stays leader-side up for the rest of the game:
+      // its leader-side abilities still work, but it can never deploy again.
+      if (!p.leader.defeated && p.resources.length >= leaderCard.deployCost) {
         acts.push({ type: 'deployLeader', player: me });
         if (leaderCard.pilotSide) {
           SB.allUnits(state, me).forEach(function (u) {
@@ -353,7 +355,8 @@
       }
     } else if (action.type === 'deployLeaderPilot') {
       const lc = SB.card(p.leader.cardId);
-      expect(!p.leader.deployed && p.resources.length >= lc.deployCost && lc.pilotSide, action);
+      expect(!p.leader.deployed && !p.leader.defeated &&
+        p.resources.length >= lc.deployCost && lc.pilotSide, action);
       const bearer = SB.findUnit(state, action.attachTo);
       expect(bearer && bearer.owner === me && !SB.hasPilot(state, bearer), action);
       p.leader.deployed = 'pilot';
@@ -368,7 +371,8 @@
       });
     } else if (action.type === 'deployLeader') {
       const leaderCard = SB.card(p.leader.cardId);
-      expect(!p.leader.deployed && p.resources.length >= leaderCard.deployCost, action);
+      expect(!p.leader.deployed && !p.leader.defeated &&
+        p.resources.length >= leaderCard.deployCost, action);
       p.leader.deployed = true;
       const unit = SB.makeUnit(state, p.leader.cardId, me);
       unit.exhausted = false; // leaders deploy ready
@@ -940,8 +944,10 @@
       state.players[original].hand.push({ uid: u.uid, cardId: u.cardId });
       u.upgrades.forEach(function (inst) {
         if (inst.leaderPilot) {
+          // The bearer leaves play, so the leader-pilot upgrade is defeated with it.
           const lp = state.players[u.owner].leader;
           lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+          lp.defeated = true;
         } else if (!SB.card(inst.cardId).token) state.players[original].discard.push(inst);
       });
       SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
