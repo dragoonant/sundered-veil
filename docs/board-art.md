@@ -1,57 +1,85 @@
-# Regenerating the board mat (`art/board.png`)
+# The board
 
-`art/` is gitignored, so the mat is a build product like every other asset: the
-generated source lives at `art/gameboard.png` and these two commands turn it into the
-file `styles.css` loads. Run both, in order, after any change to the source art.
+The play surface is **drawn, not photographed**. `js/boardart.js` renders it as an SVG.
+There is no board image to regenerate, re-measure, or ship.
 
-## 1. Flatten the perspective
+## Why it is drawn
 
-The generator renders the play surface in perspective — as if photographed from a
-chair. The UI cannot use that: every DOM zone would need its own skew to sit on its
-painted slot, and a card dropped into an arena would not match the box it landed in.
-`tools/dekeystone.mjs` solves the projective transform taking the four corners of the
-play surface to the four corners of a rectangle, and resamples through it.
+It used to be a raster mat (`art/board.png`), de-keystoned from a generated photo of a
+card table, with each of the twelve zone rectangles hand-measured off the image and
+written into `styles.css`. That arrangement had three problems, all of which the drawn
+board removes:
 
-```bash
-node tools/dekeystone.mjs --in art/gameboard.png --out art/board.png --tl 378,22 --tr 2466,20 --br 2714,1476 --bl 78,1476 --size 2048x1280
+- **The geometry was duplicated.** A painted outline and the DOM hitbox inside it were
+  two independent sets of numbers that had to agree. They drifted twice — the bottom row
+  sat 2% too high, so cards rode over the lettering, and the resources fan was sized from
+  a slot height that had been guessed rather than measured.
+- **The board was not in the repo.** `art/` is gitignored, so a fresh clone rendered the
+  zones over an empty background, and the mat could not be rebuilt from anything
+  committed — the recipe needed a source file that lived on one machine.
+- **Board text was pixels.** `DRAW DECK`, `GROUND ARENA` and the rest were baked into the
+  image, which put display text outside `names.js` and made it un-themeable.
+
+## How it works
+
+`js/boardart.js` holds **one geometry table** and uses it twice: to draw each painted
+slot, and to place the DOM zone onto it. An outline and its hitbox are therefore the same
+numbers by construction, and the drift class of bug is gone rather than fixed.
+
+Everything is expressed in a **2048x1280 board space**. That is a coordinate system, not
+a resolution — the SVG carries it as a `viewBox` and renders as vectors at whatever size
+`#mat` takes, so the same board is sharp on a phone, a laptop and a television. Nothing
+in the board pins a pixel size.
+
+### The row mirror
+
+One array (`SLOT`) describes *your* row, left to right:
+
+    base · leader · draw deck · discard pile · resources
+
+The opponent's row is that array reflected about the board's centre line
+(`x' = W - x - w`), which yields:
+
+    resources · discard pile · draw deck · leader · base
+
+So each player reads their own row in the same order from their own side of the table.
+Reordering or resizing a slot means editing `SLOT` alone; the two rows cannot fall out of
+step, because there is only one of them.
+
+### Colour
+
+Your zones are Current-blue, the opponent's Hegemony-red (see `THEME.md`). With the rows
+mirrored, that is what tells you whose row you are looking at without reading a label.
+
+The arenas therefore **cannot** use blue or red: they are shared ground that holds both
+players' units, and either colour would read as one side's territory. They take a neutral
+warm/cool pair instead — ground amber, space violet.
+
+## Arena art
+
+Each arena has an empty `<image>` layer behind its drawn frame, so art drops in without
+touching the frame or the geometry:
+
+```js
+SB.boardArt.setArenaArt('ground', 'art/arena-ground.jpg');
+SB.boardArt.setArenaArt('space', 'art/arena-space.jpg');
 ```
 
-The four corners are the **inner** edge of the glowing gold frame, in source pixels,
-clockwise from top-left. Re-measure them if the art is regenerated — `--probe` prints
-the input's dimensions, and passing an axis-aligned rectangle as the four corners is a
-usable way to crop a region out for a closer look.
+The image is clipped to the arena's rounded rect and covers it (`xMidYMid slice`), so the
+source only needs to be roughly the right shape. `art/` is gitignored, so arena art is a
+build product like card art.
 
-`--size 2048x1280` is a judgement call, not a measurement. The surface is foreshortened,
-so its true proportions are not recoverable from one view; 16:10 is the average of the
-flattened edge lengths and it keeps the two arenas square-ish. **The board is not a
-literal 1:1 square** — forcing that would stretch everything vertically by 60%.
+`tools/dekeystone.mjs`, `tools/pngpatch.mjs` and `tools/png.mjs` are kept for preparing
+that art — they are general-purpose (flatten a perspective photo, clone or smooth-fill a
+region, read/write PNG with no dependencies) and no longer specific to the board.
 
-## 2. Erase the baked-in placeholder text
+## Changing the layout
 
-The generator painted sample values into two slots — `4/6` in the player's resources and
-`HEALTH: 30` under the player's base. The live UI draws those numbers now, so the
-painted ones have to go or the mat shows a permanently stale value underneath.
+Edit the constants at the top of `js/boardart.js`: `MARGIN`, `ROW_Y`, `ROW_H`,
+`LABEL_GAP`, the `SLOT` array, and the arena block. Nothing in `styles.css` needs to
+change — it styles the board (colours, stroke weights, glow) but owns none of its
+geometry.
 
-```bash
-node tools/pngpatch.mjs --in art/board.png --out art/board.png --feather 6 --copy 58,1092,206,54,58,1196 --smooth 1632,1128,126,74
-```
-
-`--copy` clones a clean stretch of the same slot over the text; `--smooth` refills the
-region by interpolating in from its own borders. The base slot takes a copy because its
-background is flat there. The resources slot takes a smooth fill because its background
-is a left-to-right gradient — a copied block lands at the wrong brightness and the seam
-reads as a pasted rectangle.
-
-## Known limitation
-
-The bottom row of slots (base / leader / draw deck / discard / resources) is clipped by
-the source image's own bottom edge: the generator cut those boxes off. The zones are
-laid out to run to the mat's bottom edge, which reads as "tall slots" rather than as
-damage, but the outlines genuinely have no bottom. Fixing it means regenerating the art
-with headroom below the near edge, not patching the PNG.
-
-## Zone coordinates
-
-`styles.css` positions each `.mat-zone` as a percentage of the mat, measured off the
-flattened image. If step 1's `--size` or corners change, every one of those percentages
-has to be re-measured against the new file.
+One thing that *does* need re-deriving if slot sizes change: the resources fan's
+`--card-w` and `--row-w` in `styles.css`, which are stated in `cqw` and computed from the
+slot's height and width in board units. The comment there shows the arithmetic.

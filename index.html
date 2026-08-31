@@ -99,6 +99,7 @@
 <script src="data/names-4.js"></script>
 <script src="js/logtext.js"></script>
 <script src="js/sound.js"></script>
+<script src="js/boardart.js"></script>
 <script src="js/cardview.js"></script>
 <script src="js/preview.js"></script>
 <script src="js/logpanel.js"></script>
@@ -118,6 +119,8 @@
   });
   SB.artUrl = function (cardId) { return 'art/' + cardId + '.png'; };
   SB.cardBackUrl = function () { return 'art/cardback.jpg'; };
+  // The board draws itself and places every zone on its own painted slot.
+  SB.boardArt.init(document.getElementById('mat'));
   function newGame() {
     SB.sound.reset();
     SB.sound.startAmbience();

@@ -54,15 +54,14 @@ button:disabled { opacity: .4; cursor: default; }
 /* Sections must keep their content height: a shrinking flex child lets card rows
    visually spill over its neighbors instead of making #board scroll. */
 #board > * { flex-shrink: 0; }
-/* ================= the mat (art/board.png) =================
-   The board art is a de-keystoned photo of the play surface (tools/dekeystone.mjs).
-   It paints every zone outline and every zone label, so the mat is authoritative for
-   layout: zones are positioned as percentages of the mat, matching the painted slots.
-   Percentages — not pixels — because the mat scales with the window.
+/* ================= the mat =================
+   The play surface is DRAWN, not photographed: js/boardart.js renders it as an SVG
+   whose 2048x1280 viewBox is a coordinate space, not a resolution — the board is
+   vector at every size, from a phone to a television.
 
-   Card size must scale with the mat too, or cards overflow their painted slot on a
-   small window: `container-type: size` + cqw makes --card-board-w a fraction of the
-   mat's own width rather than a fixed rem. */
+   Card size scales with the mat, or cards overflow their painted slot on a small
+   window: `container-type: size` + cqw makes --card-board-w a fraction of the mat's
+   own width rather than a fixed rem. */
 #mat {
   position: relative;
   /* Width, not height, drives the mat — but it must never grow so tall that it pushes
@@ -71,9 +70,8 @@ button:disabled { opacity: .4; cursor: default; }
      Clamping the WIDTH (rather than max-height) keeps aspect-ratio honest: a clamped
      height with a full width would stretch the painted slots away from their zones. */
   width: min(100cqw, 66cqh * 2048 / 1280);
-  aspect-ratio: 2048 / 1280;   /* the flattened art's own ratio — never letterbox it */
+  aspect-ratio: 2048 / 1280;   /* matches the board's viewBox, so nothing letterboxes */
   margin: 0 auto;
-  background: url('art/board.png') center / 100% 100% no-repeat;
   container-type: size;
   --card-board-w: 7.2cqw;
   /* Contain the board's stacking, for the same reason the hand isolates: arena units
@@ -89,25 +87,52 @@ button:disabled { opacity: .4; cursor: default; }
   overflow: hidden;
 }
 
-/* Painted slot rectangles, measured off art/board.png. Left/top/width/height so a
-   zone stays glued to its outline at any mat size. */
-#enemy-deck    { left:  3.1%; top:  3.8%; width: 12.5%; height: 18.4%; }
-#enemy-discard { left: 18.9%; top:  3.8%; width: 12.7%; height: 18.4%; }
-#enemy-res     { left: 36.9%; top:  3.6%; width: 33.5%; height: 18.4%; }
-#enemy-base    { left: 75.0%; top:  3.8%; width: 10.0%; height: 18.4%; }
-#enemy-leader  { left: 86.3%; top:  3.8%; width:  9.9%; height: 18.4%; }
+/* Zone rectangles are NOT written here any more. js/boardart.js owns one geometry
+   table and uses it both to draw each painted slot and to place the DOM zone on it,
+   so an outline and the hitbox inside it are the same numbers by construction. They
+   used to be twelve hand-measurements off the mat image, and drifted twice. */
 
-#arena-ground  { left:  0.9%; top: 27.6%; width: 48.4%; height: 48.8%; }
-#arena-space   { left: 50.6%; top: 29.0%; width: 48.9%; height: 47.0%; }
+/* ---- the drawn board ----
+   Palette: your side reads Current-blue, the opponent's Hegemony-red (THEME.md), so
+   with the two rows now mirrored you can tell whose row you are looking at without
+   reading a label. The arenas therefore CANNOT be blue/red — they are shared ground,
+   and would read as one side's territory. They take a neutral warm/cool pair instead. */
+#board-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;      /* decoration: never eats a card gesture */
+  --bz-mine:   #58b8ff;
+  --bz-theirs: #ff5a5a;
+  --bz-ground: #d9a441;                  /* warm: a world */
+  --bz-space:  #9a7ad9;                  /* cool: the deep */
+  --bz-rail:   #f5c983;                  /* the glowing edge rail */
+}
+.bz-table  { fill: url(#bz-wood); }       /* a warm gradient stands in for wood grain */
+.bz-panel  { fill: #111a2b; }
+.bz-traces-fill { fill: url(#bz-traces); opacity: .85; }
+.bz-trace  { fill: none; stroke: #2f4468; stroke-width: 2; }
+.bz-trace-node { fill: #2f4468; }
+.bz-rail   { fill: none; stroke: var(--bz-rail); stroke-width: 7; }
 
-/* The bottom row's labels are painted ABOVE its boxes (the top row's sit below), so
-   these tops are the box edge at y=1062 of 1280 — not the label. Two percent higher
-   and the cards ride over the lettering. */
-#my-base       { left:  2.0%; top: 82.9%; width: 11.5%; height: 17.1%; }
-#my-leader     { left: 14.8%; top: 82.9%; width: 10.2%; height: 17.1%; }
-#my-deck       { left: 32.5%; top: 83.0%; width: 11.9%; height: 17.0%; }
-#my-discard    { left: 46.6%; top: 83.0%; width: 13.4%; height: 17.0%; }
-#my-res        { left: 64.7%; top: 83.3%; width: 34.8%; height: 16.7%; }
+.bz-fill    { fill: #16203a; opacity: .55; }
+.bz-line    { fill: none; stroke-width: 4; filter: url(#bz-glow-soft); }
+.bz-bracket { fill: none; stroke-width: 6; stroke-linecap: round; filter: url(#bz-glow-soft); }
+.bz-label {
+  fill: #dfe6f0; font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 30px; font-weight: 700; letter-spacing: 4px;
+}
+
+.bz-row-mine   .bz-line, .bz-row-mine   .bz-bracket { stroke: var(--bz-mine); }
+.bz-row-theirs .bz-line, .bz-row-theirs .bz-bracket { stroke: var(--bz-theirs); }
+.bz-arena-ground .bz-line, .bz-arena-ground .bz-bracket { stroke: var(--bz-ground); }
+.bz-arena-space  .bz-line, .bz-arena-space  .bz-bracket { stroke: var(--bz-space); }
+.bz-arena .bz-fill { fill: #0d1424; opacity: .8; }
+.bz-arena-art { opacity: .85; }
+.bz-arena-label { font-size: 54px; letter-spacing: 10px; fill: #ffffff; opacity: .34; }
+.bz-grid line { stroke: #ffffff; stroke-width: 1.5; opacity: .1; }
+.bz-seam { fill: url(#bz-seam); }
+.seam-a   { stop-color: var(--bz-ground); }
+.seam-mid { stop-color: #ffffff; }
+.seam-b   { stop-color: var(--bz-space); }
 
 /* The SINGLE-CARD slots hold one face sized to the painted box by HEIGHT — those slots
    are wider than 5:7, so fitting by width would overflow them vertically. This must NOT
@@ -146,16 +171,17 @@ button:disabled { opacity: .4; cursor: default; }
    so a 2-resource opening and a 20-resource late game both sit inside the painted box
    with no JS measuring anything. --n is the only thing ui.js has to supply.
 
-   The two geometry numbers are derived, not guessed: the mat is 1.6:1, so its height is
-   62.5cqw; a slot 18.4% tall is 11.5cqw tall; a fan at 90% of that is 10.35cqw tall; and
-   a 5:7 card that tall is 7.4cqw wide. The two resources slots differ slightly in size,
-   so each states its own pair. */
+   The two geometry numbers are derived from the board table, not guessed: a slot is
+   232 of the board's 1280 units tall, the mat is 1.6:1 so its height is 62.5cqw, giving
+   11.33cqw; a fan at 90% of that is 10.2cqw tall; a 5:7 card that tall is 7.29cqw wide.
+   The resources slot is 778 of 2048 units wide — 38cqw, less its padding. Both sides
+   now share one pair of numbers, because the rows are mirrors and identically sized. */
 .res-fan {
   --gap: .5cqw;
+  --card-w: 7.29cqw;
+  --row-w: 37cqw;
   display: flex; height: 90%; align-items: center;
 }
-#enemy-res .res-fan { --card-w: 7.4cqw; --row-w: 32.5cqw; }
-#my-res    .res-fan { --card-w: 6.7cqw; --row-w: 33.8cqw; }
 .res-fan > .card + .card {
   margin-left: min(var(--gap), (var(--row-w) - var(--card-w) * var(--n)) / (var(--n) - 1));
 }

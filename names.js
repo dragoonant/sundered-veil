@@ -57,6 +57,14 @@
       yourResources: 'Your resources',
       browseNewestFirst: 'Most recent first',
       browseResourceNote: 'Face down on the board — only you may look.',
+      // Board zone labels. The board draws these itself now (js/boardart.js); they
+      // were pixels baked into the old mat image, which put display text outside
+      // this file. Rendered in caps by the board, so written here in normal case.
+      zones: {
+        drawDeck: 'Draw Deck', discardPile: 'Discard Pile', resources: 'Resources',
+        base: 'Base', leader: 'Leader',
+        groundArena: 'Ground Arena', spaceArena: 'Space Arena',
+      },
     },
     // How-to-play text (rendered by js/help.js). Original tutorial wording.
     help: {
