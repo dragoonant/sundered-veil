@@ -21,3 +21,7 @@ art-gen.log
 art-regen.log
 art-test/
 art-test2/
+
+# Superseded art generations (v1 pre-rewrite, v2 pre-fix-pass) — regenerate via tools/gen-art.mjs
+art-old-v1/
+art-v2-superseded/
