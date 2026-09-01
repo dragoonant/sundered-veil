@@ -112,6 +112,33 @@
     return null;
   }
 
+  // The choice panel sits over the ARENAS, not the middle of the window. The arenas are
+  // the one region a decision rarely needs to read — the piles, leader, base, hand and
+  // stat lines all stay visible — and the panel no longer dims the rest of the screen,
+  // so the board can be read around it. 'Hide — check the board' still gets it out of
+  // the way entirely when the arenas themselves are what matters.
+  function positionOverArenas(modal) {
+    const g = $('arena-ground'), s = $('arena-space');
+    const content = modal.querySelector('.choice-modal-content');
+    if (!content) return;
+    if (!g && !s) { content.style.left = ''; content.style.top = ''; return; }
+    const boxes = [g, s].filter(Boolean).map(function (n) { return n.getBoundingClientRect(); });
+    const left = Math.min.apply(null, boxes.map(function (b) { return b.left; }));
+    const right = Math.max.apply(null, boxes.map(function (b) { return b.right; }));
+    const top = Math.min.apply(null, boxes.map(function (b) { return b.top; }));
+    const bottom = Math.max.apply(null, boxes.map(function (b) { return b.bottom; }));
+    if (right <= left || bottom <= top) return;      // not laid out yet; keep the default
+    content.style.left = ((left + right) / 2) + 'px';
+    content.style.top = ((top + bottom) / 2) + 'px';
+  }
+
+  // Re-anchor on resize: the arenas move with the layout, and a panel left behind at a
+  // stale position is worse than one that was never anchored.
+  window.addEventListener('resize', function () {
+    const modal = $('choice-modal');
+    if (modal && modal.classList.contains('open')) positionOverArenas(modal);
+  });
+
   function setPeek(on) {
     const modal = $('choice-modal');
     if (!modal) return;
@@ -190,6 +217,7 @@
     modal.appendChild(restore);
 
     modal.classList.add('open');
+    positionOverArenas(modal);
     setPeek(peekedKey === key);
     return true;
   };
@@ -215,6 +243,7 @@
     restore.onclick = function () { setPeek(false); peekedKey = null; };
     modal.appendChild(restore);
     modal.classList.add('open');
+    positionOverArenas(modal);
     setPeek(peekedKey === key);
     return true;
   };
