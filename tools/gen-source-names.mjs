@@ -182,6 +182,25 @@ for (const id of [...ourIds].sort()) {
   if (l.length) text[id] = l;
 }
 
+// ---- deck names -----------------------------------------------------------
+// Decks are not cards, so the dump has no name for them, and the precon list the import
+// used lived in a scratch file that is long gone. Name each deck by its real LEADER,
+// which is how players refer to a precon anyway ("the Vader deck") and is derivable from
+// data we still have. Two decks are led by a Luke Skywalker, so every name carries its
+// leader's set to stay unique.
+const decks = {};
+{
+  const src = readFileSync(join(root, 'data', 'decks.js'), 'utf8');
+  for (const m of src.matchAll(/"(deck-[a-z0-9]+)":\s*\{"leader":"([a-z]{3}-\d{3})"/g)) {
+    const [, deckId, leaderId] = m;
+    const n = cards[leaderId];
+    if (!n) continue;                       // leader not in the dump; keep the original name
+    decks[deckId] = n.name + ' (' + leaderId.slice(0, 3).toUpperCase() + ')';
+  }
+  const dupes = Object.values(decks).filter((v, i, a) => a.indexOf(v) !== i);
+  if (dupes.length) { console.error('! deck names are not unique: ' + dupes.join(', ')); process.exit(2); }
+}
+
 // A stray backslash on a card face means the dump gained an escape the unescape pass
 // above does not know about. Fail loudly rather than shipping it to the card.
 const escaped = Object.entries(text).filter(([, ls]) => ls.some(l => l.includes('\\')));
@@ -204,9 +223,11 @@ if (glued.length) {
 const body = [
   '  var C = ' + JSON.stringify(cards, null, 1) + ';',
   '  var T = ' + JSON.stringify(traitNames, null, 1) + ';',
+  '  var D = ' + JSON.stringify(decks, null, 1) + ';',
   '  var X = ' + JSON.stringify(text, null, 1) + ';',
   '  Object.keys(C).forEach(function (id) { SB.names.cards[id] = C[id]; });',
   '  Object.keys(T).forEach(function (id) { SB.names.traits[id] = T[id]; });',
+  '  Object.keys(D).forEach(function (id) { SB.names.decks[id] = D[id]; });',
   '  SB.sourceText = X;',
 ].join('\n');
 
@@ -222,6 +243,7 @@ console.log('source: ' + source);
 console.log('named:  ' + Object.keys(cards).length + '/' + ourIds.size + ' cards');
 console.log('text:   ' + Object.keys(text).length + ' cards');
 console.log('traits: ' + Object.keys(traitNames).length);
+console.log('decks:  ' + Object.keys(decks).length);
 if (missing.length) {
   // The full list belongs in scratch, not scrolled off the top of a terminal.
   writeFileSync(join(SCRATCH, 'unmatched-ids.txt'), missing.join('\n') + '\n');
