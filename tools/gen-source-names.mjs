@@ -183,19 +183,29 @@ for (const id of [...ourIds].sort()) {
 }
 
 // ---- deck names -----------------------------------------------------------
-// Decks are not cards, so the dump has no name for them, and the precon list the import
-// used lived in a scratch file that is long gone. Name each deck by its real LEADER,
-// which is how players refer to a precon anyway ("the Vader deck") and is derivable from
-// data we still have. Two decks are led by a Luke Skywalker, so every name carries its
-// leader's set to stay unique.
+// The 16 decks are the two halves of a precon PRODUCT, so each is named for its product
+// plus the leader that distinguishes it from the other half. Every part is sourced:
+//   product name — the official product list, admin.starwarsunlimited.com/api/products
+//   product kind — the internal deck id prefix (s = two-player starter, p = spotlight),
+//                  matching tools/import-resolve.mjs's own *-starter-decks.json and
+//                  *-spotlight-decks.json inputs, and the 6-starter/10-spotlight split
+//                  the decks were imported under
+//   leader       — the card database, via the names resolved above
+const SET_PRODUCT = {
+  sor: 'Spark of Rebellion', shd: 'Shadows of the Galaxy', twi: 'Twilight of the Republic',
+  jtl: 'Jump to Lightspeed', lof: 'Legends of the Force', sec: 'Secrets of Power',
+  law: 'A Lawless Time', ash: 'Ashes of the Empire',
+};
 const decks = {};
 {
   const src = readFileSync(join(root, 'data', 'decks.js'), 'utf8');
-  for (const m of src.matchAll(/"(deck-[a-z0-9]+)":\s*\{"leader":"([a-z]{3}-\d{3})"/g)) {
-    const [, deckId, leaderId] = m;
-    const n = cards[leaderId];
-    if (!n) continue;                       // leader not in the dump; keep the original name
-    decks[deckId] = n.name + ' (' + leaderId.slice(0, 3).toUpperCase() + ')';
+  for (const m of src.matchAll(/"(deck-([sp])[0-9]+[ab])":\s*\{"leader":"([a-z]{3}-\d{3})"/g)) {
+    const [, deckId, kind, leaderId] = m;
+    const leader = cards[leaderId];
+    const product = SET_PRODUCT[leaderId.slice(0, 3)];
+    if (!leader || !product) continue;      // unknown leader or set; keep the original name
+    decks[deckId] = product + (kind === 's' ? ' Two-Player Starter' : ' Spotlight Deck') +
+      ' – ' + leader.name;
   }
   const dupes = Object.values(decks).filter((v, i, a) => a.indexOf(v) !== i);
   if (dupes.length) { console.error('! deck names are not unique: ' + dupes.join(', ')); process.exit(2); }
