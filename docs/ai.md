@@ -186,10 +186,44 @@ Sera's Rescue declines the most attacks (16.9%) and is the best-piloted deck; Ka
 Contract has a higher tie rate than two of the three failures. So the deck-specific
 cause is still open — do not assume it is the tie rate just because the tie rate is bad.
 
-The obvious next experiment: give `sideValue` a per-card term for what is banked (cost
-and playability, not just count), then re-run `--policy ai` and see whether the 53.9-point
-spread narrows toward the 28.9 of random play. That is a real AI change, so measure it
-before and after rather than reasoning about it.
+### Experiment: per-card hand valuation — TRIED, FAILED, REVERTED
+
+The obvious next experiment was to give `sideValue` a per-card term for what is banked
+instead of `pl.hand.length * W.handCard`, so the cheapest way to gain a resource is to
+bank a card you cannot cast. Implemented as a reach decay (`outOfReachDecay: 0.15`,
+`outOfReachFloor: 0.4`) and measured on the same matrix, same seed, same 1440 games.
+
+**It made the AI worse, and it is reverted. Do not try it again in this form.**
+
+```
+                       before   after   delta   random
+Skarn's Vengeance        56.1    63.3    +7.2     46.8
+Farrow's Gambit          65.0    71.7    +6.7     55.0
+Sera's Rescue            77.2    81.7    +4.4     62.9
+Kael's Redemption        36.1    40.0    +3.9     61.9
+...
+Kade's Contract          67.2    61.7    -5.6     55.3
+The Machine Hosts        51.7    44.4    -7.2     40.3
+Kael's Vanguard          51.1    43.3    -7.8     47.5
+
+SPREAD   before 53.9   after 62.8   (target: toward random 28.9)
+```
+
+The spread was the whole claim, and it moved **8.9 points in the wrong direction** —
+away from random play, not toward it. The AI became MORE archetype-biased, not less.
+`Kael's Redemption` did gain 3.9 points, but its gap to its own random-play winrate only
+closed from 25.8 to 21.9, so the deck-specific failure is essentially untouched, and
+`Gorvax's Court` fell further (23.3 to 18.9). The cost was also real: 32% slower
+(4183s to 5534s), since every evaluation now prices every card in hand.
+
+Seat 1 held at 49.8% against 50.3%, so the initiative model is robust to this. That is
+the only good news in the run.
+
+What this rules out: banking is NOT merely mispriced in a way a cheap per-card heuristic
+fixes. Breaking the tie with a wrong tiebreaker is worse than leaving it arbitrary,
+because a systematic bad choice beats a random one only when the systematics are right.
+The tie itself is still a real defect — about 19% of decisions — but the fix has to know
+which card is actually surplus, which needs more than cost-versus-reach.
 
 ## Known gaps (future passes)
 
