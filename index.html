@@ -7,22 +7,14 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<!-- The board is the whole window now. Everything that is not the board is either
+     the title screen (js/title.js), the log drawer, or a centred panel. -->
 <div id="app">
-  <div id="topbar">
-    <span id="status"></span>
-    <span id="turn-buttons"></span>
-    <button id="undo-btn">Undo</button>
-    <select id="deck-select"></select>
-    <select id="difficulty-select">
-      <option value="easy">Easy</option>
-      <option value="mid" selected>Medium</option>
-      <option value="hard">Hard</option>
-    </select>
-    <button id="new-game-btn">New game</button>
-    <button id="help-btn">How to play</button>
-  </div>
   <div id="main">
   <div id="board">
+    <!-- Their hand, face down, at the top of the board: a count in a text line told
+         you the number but not the shape of the threat. Cards only, no label. -->
+    <div id="enemy-hand-bar"><div id="enemy-hand"></div></div>
     <!-- The mat art paints every zone's outline and its label, so the DOM carries no
          label text of its own: each .mat-zone is positioned onto its painted slot by
          percentage in styles.css. Order here is reading order, not layout order. -->
@@ -42,19 +34,31 @@
       <div id="my-discard" class="mat-zone pile-slot"></div>
       <div id="my-res" class="mat-zone res-slot"></div>
     </div>
-    <!-- Their hand is the one count the mat has no slot for — it is not a board zone. -->
-    <div id="enemy-hand-line">Their hand: <span id="enemy-hand-count"></span></div>
     <div id="choice-bar"></div>
-    <div id="mulligan-bar" style="display:none">
-      <button id="keep-btn">Keep hand</button>
-      <button id="mull-btn">Mulligan</button>
-    </div>
     <div id="hand-bar">
       <div id="hand"></div>
       <button id="decline-btn" style="display:none">Done</button>
     </div>
+    <!-- Turn actions with no card to hang on. Everything the LEADER can do moved
+         onto the leader card itself (js/hud.js). -->
+    <div id="turn-bar"></div>
   </div>
+  <!-- The drawer starts closed, so the board owns the full width. This handle on the
+       left edge is the only thing left of it on screen. -->
+  <button id="log-handle" type="button"></button>
   <div id="side">
+    <div id="side-head">
+      <span id="side-title"></span>
+      <button id="side-close" type="button">×</button>
+    </div>
+    <!-- The controls the top bar used to carry. They are not board actions, so they
+         live behind the same handle as the history. -->
+    <div id="side-controls">
+      <button id="undo-btn"></button>
+      <button id="mute-btn"></button>
+      <button id="new-game-btn"></button>
+      <button id="help-btn"></button>
+    </div>
     <!-- Current state (§8) sits above history (§5); faces (§7) between them, because a
          log line is not a card and an animation is gone the moment you look away. -->
     <div id="prompt" class="prompt"></div>
@@ -68,8 +72,13 @@
   </div>
   <!-- §13: options the board does not draw. Peek pushes it aside without answering. -->
   <div id="choice-modal"></div>
-  </div>
+  <!-- The leader's own actions, anchored to the leader card (js/hud.js). -->
+  <div id="leader-popover"></div>
+  <!-- Whose turn it is, said once, in the middle, and then out of the way. -->
+  <div id="turn-banner" aria-live="polite"></div>
 </div>
+<!-- Title / deck select. Owns the entry point: index.html no longer starts a game. -->
+<div id="title-screen"></div>
 <!-- Load order matters (dependency order); mirror of tests.html plus UI files.
      A new data/engine file must be added to BOTH index.html and tests.html. -->
 <script src="js/util.js"></script>
@@ -111,35 +120,21 @@
 <script src="js/targeting.js"></script>
 <script src="js/endvideo.js"></script>
 <script src="js/help.js"></script>
+<script src="js/hud.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/title.js"></script>
 <script>
 (function () {
   SB.validateContent();
-  const sel = document.getElementById('deck-select');
-  Object.keys(SB.decks).filter(function (d) { return d.indexOf('fixture') < 0; }).forEach(function (d) {
-    const o = document.createElement('option');
-    o.value = d; o.textContent = SB.names.decks[d] || d;
-    sel.appendChild(o);
-  });
   SB.artUrl = function (cardId) { return 'art/' + cardId + '.png'; };
   SB.cardBackUrl = function () { return 'art/cardback.jpg'; };
   // The board draws itself and places every zone on its own painted slot.
   SB.boardArt.init(document.getElementById('mat'));
-  function newGame() {
-    SB.sound.reset();
-    SB.sound.startAmbience();
-    SB.boardArt.rollScenes();
-    const deck = sel.value;
-    const others = Object.keys(SB.decks).filter(function (d) { return d !== deck && d.indexOf('fixture') < 0; });
-    const aiDeck = others[Math.floor(Math.random() * others.length)];
-    SB.ui.start({ deck0: deck, deck1: aiDeck,
-      difficulty: document.getElementById('difficulty-select').value });
-  }
-  document.getElementById('new-game-btn').onclick = newGame;
-  document.getElementById('undo-btn').onclick = function () { SB.ui.undo(); };
-  document.getElementById('help-btn').onclick = function () { SB.help.open(); };
-  newGame();
+  SB.hud.init();
+  // js/title.js owns the entry point: the title screen wipes into deck select, and
+  // only its Start button begins a match.
+  SB.title.init();
 })();
 </script>
 </body>

@@ -226,7 +226,7 @@
     const s = UI.state;
     if (!s) return;
     const acts = SB.isTerminal(s) ? [] : SB.legalActions(s);
-    renderStatus(s, acts);
+    renderTurnBar(s, acts);
     renderBase($('enemy-base'), s, SB.other(UI.humanSeat), acts);
     renderBase($('my-base'), s, UI.humanSeat, acts);
     renderLeader($('enemy-leader'), s, SB.other(UI.humanSeat));
@@ -234,6 +234,7 @@
     renderArena($('arena-space'), s, 'space', acts);
     renderArena($('arena-ground'), s, 'ground', acts);
     renderHand(s, acts);
+    renderEnemyHand(s);
     renderZones(s);
     renderChoices(s, acts);
     SB.logPanel.renderBattle(s, $('battle-line'), UI.humanSeat);
@@ -246,33 +247,32 @@
     // §14: a battle that stopped to ask a question keeps its arrow up.
     SB.redrawDeclaredArrow(s, UI.humanSeat);
     $('undo-btn').disabled = UI.history.length === 0;
+    // The chrome draws itself last, over a board that has just been rebuilt.
+    SB.hud.render(s, acts, UI.humanSeat, whoActs(s), UI.doAction);
   };
 
-  function renderStatus(s, acts) {
-    const st = $('status');
-    st.textContent = '';
+  // What is left of the old top bar: the two turn actions that have no card of their
+  // own to be asked for on. Deploying and leader abilities moved onto the leader card
+  // (js/hud.js); the round and who holds initiative are announced by the banner and
+  // marked on the leader slot itself.
+  function renderTurnBar(s, acts) {
+    const bar = $('turn-bar');
+    bar.textContent = '';
     if (SB.isTerminal(s)) {
-      st.appendChild(el('span', 'big', s.winner === UI.humanSeat ? SB.names.ui.youWin : SB.names.ui.youLose));
+      bar.appendChild(el('span', 'turn-bar-result',
+        s.winner === UI.humanSeat ? SB.names.ui.youWin : SB.names.ui.youLose));
       // The clip may already be running (js/sound.js claims it first); claim() is
       // idempotent, so this covers the muted / music-never-started case too.
       if (SB.endVideo) SB.endVideo.claim(s.winner === UI.humanSeat);
       return;
     }
-    st.appendChild(el('span', null, SB.names.ui.round + ' ' + s.round + ' — '));
-    st.appendChild(el('span', 'turn', whoActs(s) === UI.humanSeat ? SB.names.ui.yourTurn : SB.names.ui.enemyTurn));
-    st.appendChild(el('span', 'chip' + (s.initiative === UI.humanSeat ? ' held' : ''), SB.names.ui.initiative));
-    const btns = $('turn-buttons');
-    btns.textContent = '';
-    acts.forEach(function (a) {
+    acts.forEach(function (act) {
       let label = null;
-      if (a.type === 'pass') label = SB.names.ui.pass;
-      if (a.type === 'claimInitiative') label = SB.names.ui.claim;
-      if (a.type === 'deployLeader') label = SB.names.ui.deploy;
-      if (a.type === 'deployLeaderPilot') label = SB.names.ui.deploy + ' → ' + unitName(s, a.attachTo);
-      if (a.type === 'leaderAction') label = SB.names.ui.leaderAbility;
-      if (a.type === 'baseEpic') label = 'Base epic action';
-      if (a.type === 'smuggle') label = 'Smuggle: ' + SB.names.card(a.cardId);
-      if (label) btns.appendChild(actionButton(s, a, label));
+      if (act.type === 'pass') label = SB.names.ui.pass;
+      if (act.type === 'claimInitiative') label = SB.names.ui.claim;
+      if (act.type === 'baseEpic') label = SB.names.ui.baseEpicAction;
+      if (act.type === 'smuggle') label = SB.names.keywords.smuggle + ': ' + SB.names.card(act.cardId);
+      if (label) bar.appendChild(actionButton(s, act, label));
     });
   }
 
@@ -322,7 +322,42 @@
     if (s.players[playerIdx].credits > 0) extra.push('¢' + s.players[playerIdx].credits);
     if (extra.length) node.appendChild(el('div', 'zone-badge zone-badge-alt', extra.join(' · ')));
     node.tabIndex = 0;
+    // The leader's actions are asked for ON the leader (js/hud.js), not in a bar of
+    // verbs somewhere else. Theirs opens the same panel read-only.
+    node.onclick = function () {
+      if (Drag.justDragged()) return;
+      SB.hud.openLeader(playerIdx);
+      UI.render();
+    };
+    node.onkeydown = function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault(); SB.hud.openLeader(playerIdx); UI.render();
+      }
+    };
+    node.setAttribute('role', 'button');
     SB.preview && SB.preview.attach(node, L.cardId, null, function () { return UI.state; });
+  }
+
+  // Their hand, face down, at the top of the board. The same overlap fan as yours, so
+  // a twelve-card hand still fits, and the same renderer, so a card an effect reveals
+  // can simply be drawn face up in place.
+  function renderEnemyHand(s) {
+    const node = $('enemy-hand');
+    node.textContent = '';
+    const hand = s.players[SB.other(UI.humanSeat)].hand;
+    hand.forEach(function (inst, i) {
+      const revealed = !!inst.revealed;
+      const c = SB.renderCard({ cardId: inst.cardId, hidden: !revealed },
+        { size: 'hand', state: s });
+      c.classList.add('enemy-hand-card');
+      c.style.setProperty('--z', String(10 + i));
+      if (revealed) {
+        c.tabIndex = 0;
+        SB.preview && SB.preview.attach(c, inst.cardId, null, function () { return UI.state; });
+      }
+      node.appendChild(c);
+    });
+    node.style.setProperty('--n', String(hand.length));
   }
 
   // A pile is drawn as a stack: a few backing layers behind the top card, more of them
@@ -512,14 +547,6 @@
     const db = $('decline-btn');
     db.style.display = decline ? '' : 'none';
     db.onclick = decline ? function () { UI.doAction(decline); } : null;
-
-    const mull = acts.filter(function (a) { return a.type === 'mulligan' && a.player === UI.humanSeat; });
-    const mb = $('mulligan-bar');
-    mb.style.display = mull.length ? '' : 'none';
-    if (mull.length) {
-      $('keep-btn').onclick = function () { UI.doAction(mull.find(function (a) { return a.keep; })); };
-      $('mull-btn').onclick = function () { UI.doAction(mull.find(function (a) { return !a.keep; })); };
-    }
   }
 
   // Make a zone open a read-only browser on click (and on Enter/Space, so the board
@@ -545,7 +572,6 @@
   }
 
   function renderZones(s) {
-    $('enemy-hand-count').textContent = String(s.players[SB.other(UI.humanSeat)].hand.length);
     [['my', UI.humanSeat], ['enemy', SB.other(UI.humanSeat)]].forEach(function (pair) {
       const p = s.players[pair[1]];
       const mine = pair[1] === UI.humanSeat;
@@ -573,12 +599,13 @@
 
   // Action types with spatial affordances elsewhere in the UI.
   const SPATIAL = { playCard: 1, attack: 1, pass: 1, claimInitiative: 1, deployLeader: 1,
-    deployLeaderPilot: 1, leaderAction: 1, mulligan: 1, resourceCard: 1, choose: 1,
+    deployLeaderPilot: 1, leaderAction: 1, resourceCard: 1, choose: 1,
     unitAction: 1, baseEpic: 1, smuggle: 1 };
 
   function actionLabel(s, a) {
     const cardName = function (id) { return SB.names.card(id); };
     switch (a.type) {
+      case 'mulligan': return a.keep ? SB.names.ui.keep : SB.names.ui.mulligan;
       case 'discardCard': return 'Discard: ' + cardName(s.players[a.targetPlayer != null ? a.targetPlayer : a.player].hand[a.handIndex].cardId);
       case 'playHandCard': return a.handIndex === -1 ? SB.names.ui.decline : 'Play: ' + cardName(a.cardId);
       case 'searchTake': return a.deckIndex === -1 ? SB.names.ui.decline : 'Take: ' + cardName(s.players[a.player].deck[a.deckIndex].cardId);

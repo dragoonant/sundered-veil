@@ -49,7 +49,24 @@
       exhausted: 'Exhausted', ready: 'Ready', deployed: 'Deployed',
       youWin: 'Victory!', youLose: 'Defeat', skip: 'Skip', chooseTarget: 'Choose a target',
       decline: 'Decline', keep: 'Keep hand', mulligan: 'Mulligan', undo: 'Undo',
-      newGame: 'New game',
+      newGame: 'New game', helpBtn: 'How to play',
+      // The log/history drawer (collapsed at the start of a game) and its controls.
+      logDrawer: 'Battle log', logOpen: 'Log', logClose: 'Close',
+      muteOn: 'Sound: on', muteOff: 'Sound: off',
+      // The title screen and its deck picker.
+      gameTitle: 'Starbound Legions',
+      gameTagline: 'Two fleets. One war. Only one base left standing.',
+      titleHint: 'Click to continue',
+      chooseDeck: 'Choose your legion', chooseDifficulty: 'Opponent skill',
+      startGame: 'Start the battle',
+      difficulty: { easy: 'Easy', mid: 'Medium', hard: 'Hard' },
+      // The per-turn banner and the initiative marker on a leader.
+      initiativeYours: 'You hold the initiative',
+      initiativeTheirs: 'The opponent holds the initiative',
+      // The leader popover: deploy and abilities live on the leader card itself.
+      leaderClose: 'Close', leaderNoActions: 'Nothing to do with your leader right now.',
+      theirLeader: 'Opponent leader', baseEpicAction: 'Base epic action',
+      theirHand: 'Opponent hand',
       // Zone browser (click a pile to look through it).
       browseClose: 'Close',
       browseEmpty: 'Nothing here yet.',
@@ -78,10 +95,10 @@
         ['Costs & aspects', 'Every card shows a cost and colored aspect icons. Your leader and base provide your aspect icons; each icon on a card you cannot match costs 2 extra resources. Neutral cards have no icons and never cost extra.'],
         ['Initiative', 'One player holds the initiative token and acts first each round. Taking the initiative as your action claims the token for next round — but you take no more actions this phase, so time it well.'],
         ['Arenas & combat', 'Units fight in two arenas: ground and space. A unit attacks only enemy units in its own arena, or either base. Attacking exhausts the unit; attacker and defender strike each other simultaneously with their power, and damage stays on units between rounds. Sentinels must be attacked first. Units enter play exhausted unless an effect says otherwise.'],
-        ['Leaders', 'Your leader starts at the side of the board with a usable ability. Once you control enough resources, deploy them as a powerful unit (some can instead board a friendly vehicle as its pilot). If defeated, the leader flips back — bruised but not gone.'],
+        ['Leaders', 'Your leader sits in its own slot with a usable ability — click the leader card to see it enlarged and to use it. Once you control enough resources, deploy them as a powerful unit (some can instead board a friendly vehicle as its pilot). If defeated, the leader flips back — bruised but not gone.'],
         ['Keywords', 'Common unit keywords: Sentinel (must be attacked first) · Ambush (may attack immediately when played) · Overwhelm (extra damage spills onto the base) · Raid X (+X power while attacking) · Restore X (attacking heals your base) · Shielded (arrives with a shield that absorbs one hit) · Saboteur (ignores sentinels and shields) · Grit (+1 power per damage on it) · Hidden (cannot be attacked the round it arrives) · Bounty (defeating it rewards the OTHER player) · Smuggle (playable from your resource row) · Plot (playable from resources when you deploy a leader) · Exploit (sacrifice friendly units to pay part of the cost) · Piloting (playable as an upgrade aboard a vehicle).'],
         ['The Current & tokens', 'Some decks channel the Current: attacking with an Attuned unit grants your power token, spent to fuel potent abilities. Other decks mint credit tokens (each pays 1 resource when spent) or advantage tokens (+1 power that expires after the unit fights).'],
-        ['Reading the board', 'Numbers on a unit are power/remaining HP. A tilted card is exhausted. Blue-edged cards can act; red-glowing things are legal targets after you select an attacker or card. When an effect needs a decision, buttons for every legal choice appear in the purple bar — hover a card in hand to read its full rules text.'],
+        ['Reading the board', 'Numbers on a unit are power/remaining HP. A tilted card is exhausted. Blue-edged cards can act; red-glowing things are legal targets after you select an attacker or card. When an effect needs a decision, a panel opens in the middle of the screen with a button for every legal choice; hide it to study the board, then bring it back. Hover a card in hand to read its full rules text, and open the battle log from the tab on the left edge.'],
         ['Tips', 'Bank spare cards as resources early — economy wins long games. Do not feed weak attackers into big defenders; hit the base when their board cannot punish you. Watch the initiative: claiming it before a big round can matter more than one extra play.'],
       ],
     },

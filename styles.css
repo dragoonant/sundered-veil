@@ -18,7 +18,10 @@ img { -webkit-user-drag: none; user-select: none; }
 
 :root {
   --card-board-w:   6.6rem;
-  --card-hand-w:    8rem;
+  /* The hand is sized against the WINDOW HEIGHT, not a fixed rem: two hands are on
+     screen now, and on a short window fixed-size cards eat the height the board
+     needs and push the row off the bottom. */
+  --card-hand-w:    clamp(4.5rem, 11.5vh, 8rem);
   --card-preview-w: 19rem;
   --line: #2a3446;
   --muted: #93a3bd;
@@ -32,14 +35,9 @@ img { -webkit-user-drag: none; user-select: none; }
 }
 
 #app { display: flex; flex-direction: column; height: 100%; }
-#topbar {
-  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
-  background: #171d29; border-bottom: 1px solid var(--line); flex-wrap: wrap;
-}
-#status .big { font-size: 22px; font-weight: 700; }
-#status .turn { font-weight: 600; color: #ffd166; }
-#status .chip { margin-left: 10px; padding: 2px 8px; border-radius: 10px; background: #2a3446; font-size: 12px; }
-#status .chip.held { background: #b8860b; color: #10141c; font-weight: 700; }
+/* There is no top bar any more. Round, turn and initiative are announced by the
+   banner and marked on the leader slot; the deck and difficulty pickers are setup
+   questions and live on the title screen; the rest moved into the log drawer. */
 button, select {
   background: #223049; color: #dfe6f0; border: 1px solid #3a4a68;
   border-radius: 6px; padding: 6px 12px; font-size: 14px; cursor: pointer;
@@ -48,9 +46,11 @@ button:hover { background: #2c3e5f; }
 button:disabled { opacity: .4; cursor: default; }
 .action-btn { background: #35558a; }
 
-#main { flex: 1; display: flex; min-height: 0; }
-#board { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 6px 12px; min-width: 0;
-  container-type: size; }
+/* The drawer is an OVERLAY, not a column: #board keeps the full window width whether
+   the log is open or shut, so opening it never reflows the board mid-decision. */
+#main { flex: 1; display: block; min-height: 0; position: relative; }
+#board { height: 100%; display: flex; flex-direction: column; overflow-y: auto;
+  padding: 4px 12px 6px; min-width: 0; container-type: size; }
 /* Sections must keep their content height: a shrinking flex child lets card rows
    visually spill over its neighbors instead of making #board scroll. */
 #board > * { flex-shrink: 0; }
@@ -69,7 +69,9 @@ button:disabled { opacity: .4; cursor: default; }
      board allows, or as wide as ~2/3 of the board's height permits, whichever is less".
      Clamping the WIDTH (rather than max-height) keeps aspect-ratio honest: a clamped
      height with a full width would stretch the painted slots away from their zones. */
-  width: min(100cqw, 66cqh * 2048 / 1280);
+  /* 66cqh before both hands were on screen; their row costs the same as yours, so
+     the mat gives that height back rather than pushing your hand off the bottom. */
+  width: min(100cqw, 62cqh * 2048 / 1280);
   aspect-ratio: 2048 / 1280;   /* matches the board's viewBox, so nothing letterboxes */
   margin: 0 auto;
   container-type: size;
@@ -474,8 +476,83 @@ button:disabled { opacity: .4; cursor: default; }
 }
 @media (hover: none) { #preview { display: none !important; } }
 
+/* ============ initiative: on the leader who holds it ============
+   The banner says it once; this keeps saying it. A ring around the slot, pulsing on
+   the shared wall-clock phase (§11) so a board redrawn after every action does not
+   restart the glow and leave it permanently at frame one. */
+.mat-zone.has-initiative {
+  border-radius: 10px;
+  animation: initiative-pulse 1.9s ease-in-out infinite;
+}
+@keyframes initiative-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,209,102,.55), 0 0 10px rgba(255,209,102,.25); }
+  50%      { box-shadow: 0 0 0 4px rgba(255,209,102,.95), 0 0 26px rgba(255,209,102,.7); }
+}
+/* Inside the slot, not above it: the opponent's leader sits at the very top of the
+   mat and a caption hung above it would fall off the board. */
+.initiative-flag {
+  position: absolute; top: 2%; left: 50%; transform: translateX(-50%);
+  z-index: 30; pointer-events: none;
+  background: var(--accent); color: #06101f;
+  font-size: 1.15cqw; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  padding: .12em .5em; border-radius: 999px; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,.6);
+}
+
+/* ============ the turn banner ============
+   Said once, in the middle, then out of the way. It never takes a click away from
+   the board — pointer-events stay off for its whole life. */
+#turn-banner {
+  position: fixed; inset: 0; z-index: 54; pointer-events: none;
+  display: grid; place-content: center; text-align: center;
+  opacity: 0; visibility: hidden;
+}
+#turn-banner.show { animation: turn-banner 2.3s ease forwards; }
+@keyframes turn-banner {
+  0%   { opacity: 0; visibility: visible; transform: scale(.94); }
+  12%  { opacity: 1; transform: scale(1); }
+  70%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; visibility: hidden; transform: scale(1.03); }
+}
+.turn-banner-main {
+  font-size: clamp(1.6rem, 4.4vw, 3rem); font-weight: 800; letter-spacing: .04em;
+  color: #fff; text-shadow: 0 3px 22px rgba(0,0,0,.95), 0 0 40px rgba(0,0,0,.8);
+}
+.turn-banner-sub {
+  margin-top: .3rem; font-size: clamp(.8rem, 1.6vw, 1.05rem); font-weight: 700;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--accent);
+  text-shadow: 0 2px 14px rgba(0,0,0,.9);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mat-zone.has-initiative { animation: none;
+    box-shadow: 0 0 0 3px rgba(255,209,102,.9), 0 0 18px rgba(255,209,102,.5); }
+  #turn-banner.show { animation-duration: 2.3s; }
+}
+
+/* ============ the leader popover ============
+   Deploying and leader abilities were unexplained verbs in a top bar. They belong to
+   one card, so they are asked for on that card, at a size you can read. */
+#leader-popover {
+  position: fixed; inset: 0; z-index: 59; display: none;
+  place-items: center; background: rgba(0,0,0,.72); backdrop-filter: blur(3px);
+}
+#leader-popover.open { display: grid; }
+.leader-pop-box {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 1rem 1.2rem; text-align: center; max-height: 92vh; overflow: auto;
+  display: flex; flex-direction: column; align-items: center; gap: .7rem;
+  box-shadow: 0 20px 80px rgba(0,0,0,.6);
+}
+.leader-pop-title { font-weight: 800; font-size: 1.05rem; }
+.leader-pop-buttons {
+  display: flex; flex-direction: column; gap: .45rem; align-items: stretch;
+  min-width: 14rem; max-width: 22rem;
+}
+.leader-pop-buttons .action-btn { white-space: normal; }
+.leader-pop-empty { color: var(--muted); font-size: .82rem; font-style: italic; }
+
 /* ================= bars / hand / log ================= */
-#choice-bar, #mulligan-bar {
+#choice-bar {
   padding: 8px 12px; background: #2a2233; border: 1px solid #574266;
   border-radius: 8px; margin: 4px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
@@ -488,6 +565,30 @@ button:disabled { opacity: .4; cursor: default; }
 .choice-chip .action-btn { font-size: 12px; padding: 4px 8px; max-width: 9rem; }
 
 #hand-bar { display: flex; align-items: flex-end; gap: 8px; padding: 6px 0 2px; }
+
+/* ---- their hand -----------------------------------------------------------
+   A count told you the number and nothing about the shape of it. These are the same
+   overlap fan as yours (FANNING-SPEC §2, Model B) at about two thirds the size —
+   they are a quantity you read at a glance, not cards you are going to pick up. */
+#enemy-hand-bar { display: flex; justify-content: center; padding: 2px 0 4px; }
+#enemy-hand {
+  --gap: 5px;
+  /* Same load-bearing sizing as your hand: the width must come from the BAR, not
+     from the content. Sized to content, the percentage overlap resolves against
+     nothing and the row collapses to zero width and clips itself away. */
+  display: flex; flex-wrap: nowrap; justify-content: center;
+  overflow: hidden; isolation: isolate; flex: 1 1 auto; min-width: 0;
+}
+#enemy-hand .card {
+  flex: none; position: relative; z-index: var(--z, 10);
+  width: calc(var(--card-hand-w) * .66);
+}
+#enemy-hand .card + .card {
+  margin-left: min(var(--gap),
+    (100% - var(--card-hand-w) * .66 * var(--n)) / (var(--n) - 1));
+}
+/* A revealed card is a real card again: it lifts and previews like one. */
+#enemy-hand .card[tabindex]:hover, #enemy-hand .card[tabindex]:focus { z-index: 200; }
 
 /* The hand is an OVERLAP FAN (FANNING-SPEC §2, Model B): one row, never wrapping,
    cards sliding over each other as the hand grows. Model B rather than the arc fan
@@ -503,7 +604,9 @@ button:disabled { opacity: .4; cursor: default; }
   /* Never overlap tighter than this: the visible sliver of an occluded card has to
      carry the left edge of its art, or the hand stops being readable (§4). ~21% of
      the 8rem card. Past that the row scrolls rather than compressing further. */
-  display: flex; flex-wrap: nowrap; justify-content: flex-start;
+  /* Centred, not left-justified: the hand is the thing you look down at, and a row
+     pinned to the left edge of a full-width board reads as an unrelated column. */
+  display: flex; flex-wrap: nowrap; justify-content: center;
   overflow: hidden;
   padding-top: 6px;      /* headroom for the hover lift — the row clips it otherwise */
   /* Load-bearing: the overlap resolves 100% against THIS element, so its width must
@@ -550,13 +653,55 @@ button:disabled { opacity: .4; cursor: default; }
   #hand .card + .card { margin-left: 0; }
 }
 
+/* Turn actions that have no card of their own to be asked for on. */
+#turn-bar {
+  display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap;
+  padding: 2px 0 0; min-height: 1.9rem; align-items: center;
+}
+.turn-bar-result { font-size: 1.35rem; font-weight: 800; color: var(--accent); }
+
 /* ============ side panel: prompt, battle, recent, log (SPEC part one) ============
    Ordered by how far each looks back: what the game wants NOW, the battle in flight,
    the last few faces, then history. */
+/* The drawer. Closed at the start of every game and slid off the right edge — the
+   history is a thing you go and look at, not a column the board pays rent to all
+   match. It overlays rather than displaces, so opening it never moves the board. */
 #side {
-  width: 250px; flex: none; display: flex; flex-direction: column; min-height: 0;
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(21rem, 86vw);
+  display: flex; flex-direction: column; min-height: 0; z-index: 56;
   background: #131824; border-left: 1px solid var(--line);
+  box-shadow: -12px 0 40px rgba(0,0,0,.5);
+  transform: translateX(100%); transition: transform .28s ease;
 }
+body.drawer-open #side { transform: translateX(0); }
+
+/* The only thing the drawer leaves on screen while it is shut. */
+#log-handle {
+  position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+  z-index: 55; writing-mode: vertical-rl; text-orientation: mixed;
+  padding: 1rem .38rem; border-radius: 0 10px 10px 0; border-left: 0;
+  background: #223049; color: var(--muted);
+  letter-spacing: .16em; text-transform: uppercase; font-size: .7rem; font-weight: 700;
+}
+#log-handle:hover { color: #fff; background: #2c3e5f; }
+
+#side-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem .75rem; border-bottom: 1px solid var(--line); background: #171d29;
+}
+#side-head #side-title {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .14em;
+  font-weight: 700; color: var(--muted);
+}
+#side-close { padding: 0 .5rem; font-size: 1.1rem; line-height: 1.4; }
+/* The controls the top bar used to carry. Not board actions, so they sit behind the
+   same handle as the history rather than taking board width for the whole match. */
+#side-controls {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .4rem;
+  padding: .55rem .75rem; border-bottom: 1px solid var(--line);
+}
+#side-controls button { font-size: .78rem; padding: .4rem .5rem; }
+#mute-btn.is-muted { color: var(--muted); border-color: var(--line); }
 
 /* §16: there is never a state where the player is uncertain what is expected. */
 .prompt {
@@ -611,13 +756,6 @@ button:disabled { opacity: .4; cursor: default; }
 .log-line.has-card { cursor: help; }
 .log-line.has-card:hover { color: #cfe0ff; }
 
-@media (max-width: 900px) {
-  #main { flex-direction: column; }
-  #side {
-    width: auto; max-height: 40vh; border-left: none; border-top: 1px solid var(--line);
-  }
-  #log { max-height: 9rem; }
-}
 
 /* responsive: remove content, don't shrink it (SPEC §12) */
 @media (max-width: 900px) {
@@ -735,3 +873,75 @@ button:disabled { opacity: .4; cursor: default; }
   padding: .45rem .9rem; font: inherit; font-size: .85rem; cursor: pointer;
 }
 .end-video-skip:hover { background: rgba(255,255,255,.18); }
+
+
+/* ============ the title screen (js/title.js) ============
+   Owns the entry point. The art holds, a wipe takes it away, and the deck and
+   difficulty questions are asked ONCE here rather than sitting in a bar all match. */
+#title-screen {
+  position: fixed; inset: 0; z-index: 80; display: none;
+  place-items: center; text-align: center;
+  background: #05070d center/cover no-repeat;
+  background-image: url('art/title-duel.png');
+}
+#title-screen.open { display: grid; }
+/* The picker needs the art readable behind it but not competing with it. */
+#title-screen.is-picker::before {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(5,7,13,.72); backdrop-filter: blur(2px);
+}
+#title-screen.is-splash::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(5,7,13,.9) 0%, rgba(5,7,13,.15) 45%, rgba(5,7,13,.35) 100%);
+}
+.title-splash, .title-picker { position: relative; z-index: 1; padding: 2rem; }
+.title-splash { align-self: end; padding-bottom: 8vh; }
+.title-name {
+  margin: 0; font-size: clamp(2.2rem, 7vw, 5rem); font-weight: 900;
+  letter-spacing: .12em; text-transform: uppercase; color: #ffd166;
+  text-shadow: 0 4px 30px rgba(0,0,0,.95), 0 0 60px rgba(255,180,60,.35);
+}
+.title-name-small { font-size: clamp(1.4rem, 3.4vw, 2.2rem); margin-bottom: 1.4rem; }
+.title-tagline {
+  margin-top: .6rem; font-size: clamp(.85rem, 1.8vw, 1.15rem); color: #dfe6f0;
+  letter-spacing: .08em; text-shadow: 0 2px 14px rgba(0,0,0,.95);
+}
+.title-hint {
+  margin-top: 1.6rem; font-size: .78rem; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--muted); animation: title-hint 2.2s ease-in-out infinite;
+}
+@keyframes title-hint { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+.title-picker {
+  background: rgba(19,24,36,.86); border: 1px solid var(--line); border-radius: 14px;
+  padding: 2rem 2.4rem; min-width: min(26rem, 90vw);
+  box-shadow: 0 24px 90px rgba(0,0,0,.7);
+}
+.title-field { display: block; text-align: left; margin-bottom: 1rem; }
+.title-field-label {
+  display: block; font-size: .66rem; text-transform: uppercase; letter-spacing: .16em;
+  font-weight: 700; color: var(--muted); margin-bottom: .3rem;
+}
+.title-select { width: 100%; font-size: .95rem; padding: .55rem .7rem; }
+.title-start {
+  margin-top: .8rem; width: 100%; background: #35558a; border-color: #4b74b8;
+  font-size: 1rem; font-weight: 700; padding: .7rem 1rem; letter-spacing: .05em;
+}
+.title-start:hover { background: #41689f; }
+
+/* The wipe: a hard-edged curtain sweeping across, the screen swapped behind it at
+   the halfway point. Lives on <body> so emptying the title screen cannot remove it. */
+.title-wipe {
+  position: fixed; inset: 0 100% 0 0; z-index: 95; pointer-events: none;
+  background: linear-gradient(90deg, #05070d 0%, #05070d 92%, #ffd166 100%);
+}
+.title-wipe.run { animation: title-wipe .9s cubic-bezier(.7,0,.3,1) forwards; }
+@keyframes title-wipe {
+  0%   { inset: 0 100% 0 0; }
+  45%  { inset: 0 0 0 0; }
+  55%  { inset: 0 0 0 0; }
+  100% { inset: 0 0 0 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .title-hint { animation: none; opacity: .7; }
+}
