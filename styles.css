@@ -838,6 +838,25 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
    For options the board does not draw. Cards go through the same wiring as board
    cards, so they keep the hover preview — without which they cannot be READ before
    picking one, which is the whole point of revealing them. */
+/* §16 echo: the prompt repeated in the middle of the arenas, so the question sits
+   where the player is already looking. Italic to read as the game speaking rather than
+   as a card or a control, and inert so it never intercepts a click meant for the board
+   underneath. js/targeting.js sets left/top from the arena box. */
+#arena-prompt {
+  position: fixed; transform: translate(-50%, -50%);
+  display: none; z-index: 57; pointer-events: none;
+  font-style: italic; text-align: center; line-height: 1.35;
+  color: #eaf1ff; font-size: .95rem;
+  /* It lands on the ARENA / SPACE watermarks, which are the same size and colour as
+     plain muted text, so the two read as one smear. A tight translucent plate is
+     enough to separate them without dimming the board. */
+  padding: .45rem .9rem; border-radius: 999px;
+  background: rgba(9, 14, 26, .82); border: 1px solid var(--line);
+  box-shadow: 0 6px 24px rgba(0,0,0,.55);
+  text-shadow: 0 1px 6px rgba(0,0,0,.8);
+}
+#arena-prompt.open { display: block; }
+
 /* No scrim and no blur: the panel asks about the game, so the game has to stay
    readable around it. Only the arenas are covered (js/targeting.js anchors the panel
    over them), and those are the one region a decision rarely needs to read — piles,

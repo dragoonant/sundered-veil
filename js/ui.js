@@ -244,6 +244,7 @@
     // §13: the modal owns input whenever the board cannot show the options.
     const modalOpen = SB.renderChoiceModal(s, acts, UI.humanSeat, whoActs(s), UI.doAction);
     renderGenericChoicePopup(s, acts, modalOpen);
+    renderArenaEcho(s);
     // §14: a battle that stopped to ask a question keeps its arrow up.
     SB.redrawDeclaredArrow(s, UI.humanSeat);
     $('undo-btn').disabled = UI.history.length === 0;
@@ -835,5 +836,20 @@
     const p = SB.promptLine(s, UI.humanSeat, whoActs(s));
     node.textContent = p.text;
     node.className = 'prompt ' + (p.cls || '');
+
+  }
+
+  // Echo the prompt over the arenas, but only when the game is actually ASKING — an
+  // idle hint or "waiting for the opponent" does not need to sit on the board.
+  // Suppressed while the choice panel is showing, which occupies the same spot and
+  // already carries its own prompt; it returns when that panel is hidden to peek.
+  // MUST run after the modal renderers: they set the open class this reads.
+  function renderArenaEcho(s) {
+    if (!SB.renderArenaPrompt) return;
+    const p = SB.promptLine(s, UI.humanSeat, whoActs(s));
+    const modal = $('choice-modal');
+    const panelShowing = !!modal && modal.classList.contains('open') &&
+      !modal.classList.contains('peek');
+    SB.renderArenaPrompt(p.text, p.cls === 'asking' && !panelShowing);
   }
 })(window.SB = window.SB || {});

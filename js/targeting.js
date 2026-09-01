@@ -117,26 +117,62 @@
   // stat lines all stay visible — and the panel no longer dims the rest of the screen,
   // so the board can be read around it. 'Hide — check the board' still gets it out of
   // the way entirely when the arenas themselves are what matters.
-  function positionOverArenas(modal) {
-    const g = $('arena-ground'), s = $('arena-space');
-    const content = modal.querySelector('.choice-modal-content');
-    if (!content) return;
-    if (!g && !s) { content.style.left = ''; content.style.top = ''; return; }
-    const boxes = [g, s].filter(Boolean).map(function (n) { return n.getBoundingClientRect(); });
+  // Viewport box spanning both arenas, or null before they are laid out.
+  function arenaBox() {
+    const boxes = [$('arena-ground'), $('arena-space')].filter(Boolean)
+      .map(function (n) { return n.getBoundingClientRect(); });
+    if (!boxes.length) return null;
     const left = Math.min.apply(null, boxes.map(function (b) { return b.left; }));
     const right = Math.max.apply(null, boxes.map(function (b) { return b.right; }));
     const top = Math.min.apply(null, boxes.map(function (b) { return b.top; }));
     const bottom = Math.max.apply(null, boxes.map(function (b) { return b.bottom; }));
-    if (right <= left || bottom <= top) return;      // not laid out yet; keep the default
-    content.style.left = ((left + right) / 2) + 'px';
-    content.style.top = ((top + bottom) / 2) + 'px';
+    if (right <= left || bottom <= top) return null;
+    return { left: left, right: right, top: top, bottom: bottom,
+      cx: (left + right) / 2, cy: (top + bottom) / 2 };
   }
+
+  function positionOverArenas(modal) {
+    const content = modal.querySelector('.choice-modal-content');
+    if (!content) return;
+    const box = arenaBox();
+    if (!box) { content.style.left = ''; content.style.top = ''; return; }
+    content.style.left = box.cx + 'px';
+    content.style.top = box.cy + 'px';
+  }
+
+  // §16 echo: the prompt line also reads in the middle of the arenas, so the question
+  // is where the player is already looking. The HUD line is easy to miss when the
+  // answer is a tap on a card ("Tap a card in your hand") and nothing opens a panel.
+  // Same text as the HUD, never a second wording — one sentence, generated once.
+  SB.renderArenaPrompt = function (text, show) {
+    let node = $('arena-prompt');
+    if (!node) {
+      node = el('div', 'arena-prompt');
+      node.id = 'arena-prompt';
+      document.body.appendChild(node);
+    }
+    // The text is kept current even while hidden: peek reveals this node without a
+    // redraw, so an empty one would leave the board saying nothing at all.
+    if (text != null && node.textContent !== text) node.textContent = text;
+    const box = show ? arenaBox() : null;
+    if (!show || !box) { node.classList.remove('open'); return; }
+    node.style.left = box.cx + 'px';
+    node.style.top = box.cy + 'px';
+    // Never wider than the arenas it sits on, so it cannot spill over the piles.
+    node.style.maxWidth = Math.max(160, (box.right - box.left) * 0.8) + 'px';
+    node.classList.add('open');
+  };
 
   // Re-anchor on resize: the arenas move with the layout, and a panel left behind at a
   // stale position is worse than one that was never anchored.
   window.addEventListener('resize', function () {
     const modal = $('choice-modal');
     if (modal && modal.classList.contains('open')) positionOverArenas(modal);
+    const p = $('arena-prompt');
+    if (p && p.classList.contains('open')) {
+      const box = arenaBox();
+      if (box) { p.style.left = box.cx + 'px'; p.style.top = box.cy + 'px'; }
+    }
   });
 
   function setPeek(on) {
@@ -144,6 +180,14 @@
     if (!modal) return;
     // Toggled straight on the DOM, never through a redraw: nothing about the game moves.
     modal.classList.toggle('peek', on);
+    // Same reason the echo exists: with the panel hidden there would otherwise be
+    // nothing on the board saying what is being asked.
+    const echo = $('arena-prompt');
+    if (echo && echo.textContent) {
+      const box = on ? arenaBox() : null;
+      if (box) { echo.style.left = box.cx + 'px'; echo.style.top = box.cy + 'px'; }
+      echo.classList.toggle('open', on && !!box);
+    }
   }
 
   function escPeek(e) {
