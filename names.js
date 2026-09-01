@@ -67,6 +67,9 @@
       leaderClose: 'Close', leaderNoActions: 'Nothing to do with your leader right now.',
       theirLeader: 'Opponent leader', baseEpicAction: 'Base epic action',
       theirHand: 'Opponent hand',
+      // The Current token, in its own slot between the leader and the draw deck.
+      forceHeld: 'The Current — held, ready to spend',
+      forceSpent: 'The Current — not held',
       // Zone browser (click a pile to look through it).
       browseClose: 'Close',
       browseEmpty: 'Nothing here yet.',
@@ -79,7 +82,7 @@
       // this file. Rendered in caps by the board, so written here in normal case.
       zones: {
         drawDeck: 'Draw Deck', discardPile: 'Discard Pile', resources: 'Resources',
-        base: 'Base', leader: 'Leader',
+        base: 'Base', leader: 'Leader', force: 'The Current',
         groundArena: 'Ground Arena', spaceArena: 'Space Arena',
       },
     },

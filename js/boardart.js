@@ -49,6 +49,15 @@
       out[s.id] = rect;
       x += s.w + s.gapAfter;
     });
+    // The Current token gets the gap between the leader and the draw deck rather than
+    // a slot of its own: it is one bit of state, not a pile, and it belongs beside the
+    // leader whose abilities spend it. Derived from the two neighbouring rects, so it
+    // lands in the right half of the row on the mirrored side too.
+    const A = out.leader, B = out.deck;
+    const lo = A.x < B.x ? A.x + A.w : B.x + B.w;
+    const hi = A.x < B.x ? B.x : A.x;
+    const d = 76;
+    out.force = { x: (lo + hi) / 2 - d / 2, y: A.y + A.h / 2 - d / 2, w: d, h: d };
     return out;
   }
 
@@ -67,7 +76,9 @@
     'enemy-res': LAYOUT.theirs.resources, 'enemy-discard': LAYOUT.theirs.discard,
     'enemy-deck': LAYOUT.theirs.deck, 'enemy-leader': LAYOUT.theirs.leader,
     'enemy-base': LAYOUT.theirs.base,
+    'enemy-force': LAYOUT.theirs.force,
     'my-base': LAYOUT.mine.base, 'my-leader': LAYOUT.mine.leader,
+    'my-force': LAYOUT.mine.force,
     'my-deck': LAYOUT.mine.deck, 'my-discard': LAYOUT.mine.discard,
     'my-res': LAYOUT.mine.resources,
     'arena-ground': LAYOUT.arenas.ground, 'arena-space': LAYOUT.arenas.space,
@@ -81,21 +92,43 @@
   // one board, one location, seen from two sides — but the two arenas roll separately.
   const SCENES = 5;                      // shots per set; files are <key>-1..5.png
   const SLOT_SCENE = { resources: 'slot-res', discard: 'slot-disc' };
+  // The two discard piles roll SEPARATELY, and never to the same shot as each other:
+  // they are small, they sit one above the other, and identical art in both read as
+  // one zone mirrored rather than as two piles belonging to two players. The resource
+  // rows keep a shared scene on purpose — the whole row IS mirrored, deliberately.
+  const PER_SIDE = { discard: 1 };
+
+  // Each entry is one roll: a file key (the art set), a seed key (what the
+  // no-repeat memory is kept under) and the image nodes that take the result.
   function sceneTargets() {
-    const t = { 'arena-ground': ['arena-art-ground'], 'arena-space': ['arena-art-space'] };
+    const t = [
+      { key: 'arena-ground', seed: 'arena-ground', ids: ['arena-art-ground'] },
+      { key: 'arena-space', seed: 'arena-space', ids: ['arena-art-space'] },
+    ];
     for (const slot in SLOT_SCENE) {
-      t[SLOT_SCENE[slot]] = ['slot-art-mine-' + slot, 'slot-art-theirs-' + slot];
+      const key = SLOT_SCENE[slot];
+      const ids = ['slot-art-mine-' + slot, 'slot-art-theirs-' + slot];
+      if (PER_SIDE[slot]) {
+        t.push({ key: key, seed: key + '#mine', ids: [ids[0]], group: key });
+        t.push({ key: key, seed: key + '#theirs', ids: [ids[1]], group: key });
+      } else {
+        t.push({ key: key, seed: key, ids: ids });
+      }
     }
     return t;
   }
   const lastScene = {};
-  function roll(key) {
-    // Rerolled away from the shot just used: a random pick that repeats itself back to
-    // back reads as a bug rather than as chance.
+  // Rerolled away from the shot just used, and from anything already taken this game
+  // by a slot in the same group: a random pick that repeats itself back to back reads
+  // as a bug rather than as chance, and so do two identical piles side by side.
+  function roll(key, seed, avoid) {
     let n = 1 + Math.floor(Math.random() * SCENES);
-    if (n === lastScene[key] && SCENES > 1) n = 1 + (n % SCENES);
-    lastScene[key] = n;
-    return 'art/' + key + '-' + n + '.png';
+    const taken = function (x) {
+      return x === lastScene[seed] || (avoid && avoid.indexOf(x) >= 0);
+    };
+    for (let guard = 0; guard < SCENES && SCENES > 1 && taken(n); guard++) n = 1 + (n % SCENES);
+    lastScene[seed] = n;
+    return { href: 'art/' + key + '-' + n + '.png', n: n };
   }
 
   // ---- drawing -------------------------------------------------------------
@@ -258,6 +291,11 @@
         const ly = mine ? r.y - LABEL_GAP : r.y + r.h + LABEL_GAP + 22;
         g.appendChild(label(SB.names.ui.zones[LABEL_KEY[s.id]], r.x + r.w / 2, ly));
       });
+      // The Current's socket. No painted label: it sits in a 90-unit gap between two
+      // slots that already have one, and a third caption there would read as theirs.
+      const f = LAYOUT[side].force;
+      g.appendChild(svgEl('circle', { cx: f.x + f.w / 2, cy: f.y + f.h / 2, r: f.w / 2,
+        class: 'bz-force-socket' }));
       svg.appendChild(g);
     });
     return svg;
@@ -283,14 +321,15 @@
     },
     // Deal every painted zone a fresh scene. Called on init and at every new game.
     rollScenes: function () {
-      const targets = sceneTargets();
-      for (const key in targets) {
-        const href = roll(key);
-        targets[key].forEach(function (id) {
+      const used = {};                 // group -> shots already dealt this game
+      sceneTargets().forEach(function (t) {
+        const r = roll(t.key, t.seed, t.group ? used[t.group] : null);
+        if (t.group) (used[t.group] = used[t.group] || []).push(r.n);
+        t.ids.forEach(function (id) {
           const img = document.getElementById(id);
-          if (img) img.setAttribute('href', href);
+          if (img) img.setAttribute('href', r.href);
         });
-      }
+      });
     },
   };
 })(window.SB = window.SB || {});

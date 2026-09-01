@@ -99,8 +99,8 @@
     // --- tokens and economy ---
     creditsGained: function (l) { return player(l.player) + ' gained ' + n(l.amount, 'credit') + '.'; },
     creditSpent: function (l) { return player(l.player) + ' spent a credit.'; },
-    forceGained: function (l) { return player(l.player) + ' gained the Force.'; },
-    forceUsed: function (l) { return player(l.player) + ' spent the Force.'; },
+    forceGained: function (l) { return player(l.player) + ' gained the Current.'; },
+    forceUsed: function (l) { return player(l.player) + ' spent the Current.'; },
     tokenCreated: function (l, s) {
       return 'A ' + cardName(l.cardId) + ' token joined the board alongside ' + nameOf(l.uid, s, 'its summoner') + '.';
     },

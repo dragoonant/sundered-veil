@@ -318,7 +318,6 @@
     node.appendChild(el('div', 'zone-badge',
       L.deployed ? SB.names.ui.deployed : (L.exhausted ? SB.names.ui.exhausted : SB.names.ui.ready)));
     const extra = [];
-    if (s.players[playerIdx].force) extra.push(SB.names.ui.forceToken);
     if (s.players[playerIdx].credits > 0) extra.push('¢' + s.players[playerIdx].credits);
     if (extra.length) node.appendChild(el('div', 'zone-badge zone-badge-alt', extra.join(' · ')));
     node.tabIndex = 0;
@@ -350,6 +349,7 @@
       const c = SB.renderCard({ cardId: inst.cardId, hidden: !revealed },
         { size: 'hand', state: s });
       c.classList.add('enemy-hand-card');
+      if (revealed) c.classList.add('is-revealed');
       c.style.setProperty('--z', String(10 + i));
       if (revealed) {
         c.tabIndex = 0;
@@ -358,6 +358,18 @@
       node.appendChild(c);
     });
     node.style.setProperty('--n', String(hand.length));
+  }
+
+  // The Current: held or not held, in its own socket beside the leader that spends it.
+  // A symbol rather than a word — the board's one piece of state that is a TOKEN on a
+  // real table, and the name it answers to rides along as the hover title.
+  function renderForce(node, s, playerIdx) {
+    node.textContent = '';
+    const held = !!s.players[playerIdx].force;
+    const tok = el('div', 'force-token' + (held ? ' is-held' : ' is-spent'), '◈');
+    if (held) tok.style.animationDelay = SB.animationPhase(2600);
+    tok.title = held ? SB.names.ui.forceHeld : SB.names.ui.forceSpent;
+    node.appendChild(tok);
   }
 
   // A pile is drawn as a stack: a few backing layers behind the top card, more of them
@@ -580,6 +592,7 @@
       renderPile($(pair[0] + '-discard'), s, p.discard,
         p.discard.length ? p.discard[p.discard.length - 1].cardId : null);
       renderResourceRow($(pair[0] + '-res'), p.resources);
+      renderForce($(pair[0] + '-force'), s, pair[1]);
 
       // Both discards browse — a discard pile is public information either way. Newest
       // first, because "what just died" is what you open it to find out.

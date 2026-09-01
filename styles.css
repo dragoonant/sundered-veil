@@ -476,6 +476,34 @@ button:disabled { opacity: .4; cursor: default; }
 }
 @media (hover: none) { #preview { display: none !important; } }
 
+/* ============ the Current ============
+   Its own socket on the board, between the leader and the draw deck: it is the one
+   piece of state that is a TOKEN on a real table, and it was previously a word in a
+   badge under the leader, where it read as a label rather than a thing you spend. */
+.bz-force-socket {
+  fill: #0d1526; stroke: #2f4468; stroke-width: 4;
+}
+.force-slot { overflow: visible; }
+.force-token {
+  width: 82%; aspect-ratio: 1; border-radius: 50%;
+  display: grid; place-items: center; /* The glyph has to sit INSIDE the socket, not fill its bounding box. */
+  font-size: 1.5cqw; line-height: 1;
+}
+.force-token.is-held {
+  color: #06101f; font-weight: 900;
+  background: radial-gradient(circle at 38% 32%, #fff6d8 0%, #ffd166 45%, #d99a1f 100%);
+  box-shadow: 0 0 0 2px rgba(255,209,102,.55), 0 0 18px rgba(255,209,102,.6);
+  animation: force-breathe 2.6s ease-in-out infinite;
+}
+@keyframes force-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,209,102,.45), 0 0 12px rgba(255,209,102,.4); }
+  50%      { box-shadow: 0 0 0 3px rgba(255,209,102,.9), 0 0 30px rgba(255,209,102,.85); }
+}
+/* Not held is still drawn: an empty socket says "this deck has one and it is spent",
+   which an absent token cannot. */
+.force-token.is-spent { color: #33415c; border: 2px dashed #2f4468; }
+@media (prefers-reduced-motion: reduce) { .force-token.is-held { animation: none; } }
+
 /* ============ initiative: on the leader who holds it ============
    The banner says it once; this keeps saying it. A ring around the slot, pulsing on
    the shared wall-clock phase (§11) so a board redrawn after every action does not
@@ -570,22 +598,35 @@ button:disabled { opacity: .4; cursor: default; }
    A count told you the number and nothing about the shape of it. These are the same
    overlap fan as yours (FANNING-SPEC §2, Model B) at about two thirds the size —
    they are a quantity you read at a glance, not cards you are going to pick up. */
-#enemy-hand-bar { display: flex; justify-content: center; padding: 2px 0 4px; }
+/* Only the near quarter of each card shows. They are the same size as yours — a
+   half-size row read as a different kind of object — but the row is cropped to the
+   edge closest to you, which is all a face-down card has to say. Upside down, the way
+   a hand held across the table actually faces. */
+#enemy-hand-bar {
+  display: flex; justify-content: center; align-items: flex-end;
+  height: calc(var(--card-hand-w) * 7 / 5 * .25);
+  overflow: hidden; padding: 0; margin-bottom: 4px;
+}
+/* A card an effect turns face up is a real card again, so the row opens to its full
+   height rather than showing a quarter of something the player is meant to read. */
+#enemy-hand-bar:has(.is-revealed) { height: calc(var(--card-hand-w) * 7 / 5); }
 #enemy-hand {
   --gap: 5px;
   /* Same load-bearing sizing as your hand: the width must come from the BAR, not
      from the content. Sized to content, the percentage overlap resolves against
      nothing and the row collapses to zero width and clips itself away. */
-  display: flex; flex-wrap: nowrap; justify-content: center;
-  overflow: hidden; isolation: isolate; flex: 1 1 auto; min-width: 0;
+  display: flex; flex-wrap: nowrap; justify-content: center; align-items: flex-end;
+  /* The BAR does the cropping; this row must not clip its own overflow or the cards
+     would be cut off at their own box instead of at the quarter line. */
+  overflow: visible; isolation: isolate; flex: 1 1 auto; min-width: 0; height: 100%;
 }
 #enemy-hand .card {
   flex: none; position: relative; z-index: var(--z, 10);
-  width: calc(var(--card-hand-w) * .66);
+  width: var(--card-hand-w); transform: rotate(180deg);
 }
+#enemy-hand .card.is-revealed { transform: none; }
 #enemy-hand .card + .card {
-  margin-left: min(var(--gap),
-    (100% - var(--card-hand-w) * .66 * var(--n)) / (var(--n) - 1));
+  margin-left: min(var(--gap), (100% - var(--card-hand-w) * var(--n)) / (var(--n) - 1));
 }
 /* A revealed card is a real card again: it lifts and previews like one. */
 #enemy-hand .card[tabindex]:hover, #enemy-hand .card[tabindex]:focus { z-index: 200; }
@@ -677,13 +718,16 @@ body.drawer-open #side { transform: translateX(0); }
 
 /* The only thing the drawer leaves on screen while it is shut. */
 #log-handle {
-  position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+  position: fixed; right: 0; top: 50%; transform: translateY(-50%);
   z-index: 55; writing-mode: vertical-rl; text-orientation: mixed;
-  padding: 1rem .38rem; border-radius: 0 10px 10px 0; border-left: 0;
+  padding: 1rem .38rem; border-radius: 10px 0 0 10px; border-right: 0;
+  transition: opacity .18s ease;
   background: #223049; color: var(--muted);
   letter-spacing: .16em; text-transform: uppercase; font-size: .7rem; font-weight: 700;
 }
 #log-handle:hover { color: #fff; background: #2c3e5f; }
+/* Once the drawer is out it covers this edge, and the drawer has its own close. */
+body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
 
 #side-head {
   display: flex; align-items: center; justify-content: space-between;
