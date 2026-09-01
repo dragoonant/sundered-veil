@@ -20,7 +20,13 @@ createServer(async (req, res) => {
     const file = normalize(join(root, p));
     if (!file.startsWith(root)) { res.writeHead(403); res.end(); return; }
     const body = await readFile(file);
-    res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' });
+    // Never cache: regenerating data/source-local.js or editing a js/ file and then
+    // seeing the OLD one is a genuinely confusing failure, and there is no build step
+    // or content hash to bust a stale copy with.
+    res.writeHead(200, {
+      'Content-Type': MIME[extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-store, must-revalidate',
+    });
     res.end(body);
   } catch (e) {
     res.writeHead(404); res.end('not found');

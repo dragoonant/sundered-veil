@@ -128,8 +128,19 @@ const UNESCAPE = { n: '\n', r: '\r', t: '\t' };
 const unescape = v => typeof v === 'string'
   ? v.replace(/\\(.)/g, (m, c) => (Object.prototype.hasOwnProperty.call(UNESCAPE, c) ? UNESCAPE[c] : c))
   : v;
+// ---- aspect icons ---------------------------------------------------------
+// The dump renders an aspect ICON as its bare name with no separator, so a card asking
+// for three icons arrives as "disclose CommandCommandHeroism". Split the run into
+// bracketed icons; this project already substitutes names for the printed insignias.
+// Only runs of 2+ are touched — a lone aspect name is ordinary prose ("a Command unit").
+const ASPECT = '(?:Command|Aggression|Vigilance|Cunning|Heroism|Villainy)';
+const icons = v => typeof v === 'string'
+  ? v.replace(new RegExp('(?:' + ASPECT + '){2,}', 'g'),
+      run => run.match(new RegExp(ASPECT, 'g')).map(a => '[' + a + ']').join(''))
+  : v;
+
 for (const r of rows.values()) {
-  for (const k of ['name', 'subtitle', 'text', 'deployBox', 'epicAction']) r[k] = unescape(r[k]);
+  for (const k of ['name', 'subtitle', 'text', 'deployBox', 'epicAction']) r[k] = icons(unescape(r[k]));
   r.traits = r.traits.map(unescape);
 }
 
@@ -177,6 +188,16 @@ const escaped = Object.entries(text).filter(([, ls]) => ls.some(l => l.includes(
 if (escaped.length) {
   console.error('! ' + escaped.length + ' card(s) still carry a backslash after unescaping, e.g.');
   escaped.slice(0, 3).forEach(([id, ls]) => console.error('    ' + id + ': ' + ls.find(l => l.includes('\\')).slice(0, 110)));
+  process.exit(2);
+}
+
+// Same for an unsplit aspect-icon run ("CommandCommandHeroism"): if one survives, the
+// aspect list above has fallen behind the game's and the card would ship unreadable.
+const RUN = new RegExp('(?:' + ASPECT + '){2,}');
+const glued = Object.entries(text).filter(([, ls]) => ls.some(l => RUN.test(l)));
+if (glued.length) {
+  console.error('! ' + glued.length + ' card(s) still show a run-together aspect icon, e.g.');
+  glued.slice(0, 3).forEach(([id, ls]) => console.error('    ' + id + ': ' + ls.find(l => RUN.test(l)).slice(0, 110)));
   process.exit(2);
 }
 
