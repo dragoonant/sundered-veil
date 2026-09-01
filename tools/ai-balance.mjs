@@ -11,7 +11,12 @@
 //
 // Usage:
 //   node tools/ai-balance.mjs [--games N] [--difficulty easy|mid|hard] [--seed TAG]
-//                             [--out FILE] [--quiet] [--cap N]
+//                             [--policy ai|random] [--out FILE] [--quiet] [--cap N]
+//
+// --policy random is the CONTROL. A deck's winrate under the AI confounds two causes:
+// the deck being stronger, and the AI piloting that archetype better. Random play is
+// blind to archetype, so a deck that is strong under both is a deck property, while one
+// that is strong only under the AI is a fact about js/ai.js. Compare the ORDERINGS.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +33,8 @@ const DIFFICULTY = flag('difficulty', 'hard');
 const SEED = flag('seed', 'bal');
 const OUT = flag('out', null);
 const CAP = Number(flag('cap', 4000));
+const POLICY = flag('policy', 'ai');
+if (POLICY !== 'ai' && POLICY !== 'random') { console.error('--policy must be ai or random'); process.exit(2); }
 const QUIET = argv.includes('--quiet');
 
 // Load the engine the way tools/run-tests.mjs does — one script list, no drift.
@@ -45,10 +52,18 @@ if (decks.length < 2) { console.error('need at least 2 real decks'); process.exi
 
 function playGame(deck0, deck1, seed) {
   let s = SB.newGame({ deck0, deck1, seed });
+  // The control draws uniformly from legalActions. Its rng is seeded per game so the
+  // control run is as reproducible as the AI run.
+  const rand = POLICY === 'random' ? SB.rng('ctrl|' + seed) : null;
   let n = 0;
   while (!SB.isTerminal(s)) {
     if (++n > CAP) return { winner: 'timeout', actions: n, round: s.round };
-    s = SB.apply(s, SB.ai.chooseAction(s, DIFFICULTY));
+    if (rand) {
+      const acts = SB.legalActions(s);
+      s = SB.apply(s, acts[Math.floor(rand() * acts.length)]);
+    } else {
+      s = SB.apply(s, SB.ai.chooseAction(s, DIFFICULTY));
+    }
   }
   return { winner: s.winner, actions: n, round: s.round };
 }
@@ -97,7 +112,8 @@ const rows = decks.map(d => {
 }).sort((x, y) => (y.winrate ?? 0) - (x.winrate ?? 0));
 
 const out = [];
-out.push('AI deck-matrix balance — difficulty=' + DIFFICULTY + ', ' + GAMES + ' games/pairing, seed="' + SEED + '"');
+out.push('Deck-matrix balance — policy=' + POLICY + (POLICY === 'ai' ? ', difficulty=' + DIFFICULTY : '') +
+  ', ' + GAMES + ' games/pairing, seed="' + SEED + '"');
 out.push(decks.length + ' decks, ' + pairings.length + ' ordered pairings, ' + games + ' games in ' + secs.toFixed(1) + 's');
 out.push('');
 out.push('deck                       games   win%   as-1st  as-2nd');
@@ -117,7 +133,7 @@ out.push('spread: ' + best.name + ' ' + pct(best.wins, best.wins + best.losses).
 
 console.log(out.join('\n'));
 if (OUT) {
-  writeFileSync(OUT, JSON.stringify({ difficulty: DIFFICULTY, games: GAMES, seed: SEED,
+  writeFileSync(OUT, JSON.stringify({ policy: POLICY, difficulty: DIFFICULTY, games: GAMES, seed: SEED,
     decided, draws, timeouts, seatFirstWins, secs, rows, pairings }, null, 1));
   console.log('\nwrote ' + OUT);
 }

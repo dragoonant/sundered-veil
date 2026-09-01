@@ -80,17 +80,68 @@ The Machine Hosts      51.7%   47.8%   55.6%
   broken. `W.initiative: 6` is not obviously mispriced.
 - **0 draws, 0 timeouts, 79 actions/game mean.** Games end decisively and quickly;
   nothing is grinding against the 4000-action cap.
-- **Deck spread is wide: 77.2% to 23.3%.** Do NOT read this as a deck-balance
-  verdict. It is one number confounding two causes, and this harness cannot separate
-  them: a precon really being stronger, and the AI playing some archetypes better
-  than others. A one-ply greedy policy flatters decks that win by attacking and
-  punishes decks that need a plan held across turns — and the bottom of that table
-  (The Living Current, Gorvax's Court) is exactly where the slower, more conditional
-  decks sit. Suspect the AI first.
+- **Deck spread is wide: 77.2% to 23.3% — but most of that is the AI, not the decks.**
+  See the control below.
 
-To separate the two, the next pass needs a non-AI control: replay the same matrix
-with `SB.randomGame` on both sides and compare the orderings. Where a deck is weak
-under both, that is the deck; where it is weak only under the AI, that is `js/ai.js`.
+## Random-play control — 2026-08-31, seed `bal1`, 24 games/pairing
+
+5760 games, same matrix, uniform random play on both sides. Random play is blind to
+archetype, so it measures the DECK with the pilot removed. Comparing the two orderings
+separates a strong deck from a deck the AI happens to play well.
+
+```
+deck                    AI%   random%   delta   read
+Sera's Rescue          77.2     62.9   +14.3   AI pilots it well
+Kade's Contract        67.2     55.3   +11.9   AI pilots it well
+The Machine Hosts      51.7     40.3   +11.4   AI pilots it well
+Solenne's Resolve      60.6     49.3   +11.2   AI pilots it well
+Farrow's Gambit        65.0     55.0   +10.0   AI pilots it well
+Skarn's Vengeance      56.1     46.8    +9.3   AI pilots it well
+Malvane's Fist         52.2     43.6    +8.6   AI pilots it well
+Tessa's Pathfinders    67.8     64.2    +3.6   consistent — genuinely strong
+Kael's Vanguard        51.1     47.5    +3.6   consistent
+Draul's Remnant        52.2     51.7    +0.6   consistent
+The Oathbound          42.2     49.0    -6.8   AI struggles
+Veyd's Design          37.8     44.9    -7.1   AI struggles
+The Living Current     26.1     35.3    -9.2   weak deck AND badly piloted
+The Emperor's Design   33.3     50.6   -17.2   AI CANNOT PILOT IT
+Gorvax's Court         23.3     41.8   -18.5   AI CANNOT PILOT IT
+Kael's Redemption      36.1     61.9   -25.8   AI CANNOT PILOT IT
+```
+
+**The headline: `Kael's Redemption` is the 3rd STRONGEST deck under random play (61.9%)
+and the 3rd weakest under the AI (36.1%).** A 26-point swing. That is not a weak deck;
+that is `js/ai.js` failing to pilot it. Same for The Emperor's Design and Gorvax's Court,
+both near or above even under random play and bottom-three under the AI.
+
+Corroborating: the spread is 53.9 points under the AI and only 28.9 under random play.
+The AI nearly DOUBLES the apparent imbalance. Deck power differences are real but roughly
+half what the AI table suggests.
+
+Only `The Living Current` is weak under both (35.3% random), so it is the one deck with a
+genuine card-level problem — compounded by poor piloting on top.
+
+Seat 1 wins 49.9% under random play against 50.3% under the AI. The initiative model is
+fair independently of who is playing, which is a much stronger result than either run
+alone.
+
+### What the cause is NOT
+
+Two hypotheses tested against the data and both come up short — record them so nobody
+re-runs them:
+
+- **Not the unvalued token/Force/plot resources** (the known gap below). The five
+  worst-piloted decks average a SMALLER share of token cards than the five best (16% vs
+  22%), and `Kael's Redemption`, the worst by 7 points, contains zero of them.
+- **Not simply deck cost.** Expensive decks do trend worse — the five worst-piloted
+  average 3.30 mean cost against 2.81 for the five best, consistent with a one-ply
+  evaluator that cannot see an expensive card's payoff past its horizon. But the
+  correlation is only r = -0.44 (r-squared 0.20), which explains a fifth of the variance
+  and is not significant at n = 16. A lead, not a cause.
+
+The next step is to instrument, not to theorise: log `evaluate()` for `Kael's Redemption`
+against a deck it beats under random play and loses to under the AI, and find the turn
+where the policy's choice diverges from the obvious line.
 
 ## Known gaps (future passes)
 
