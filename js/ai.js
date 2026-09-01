@@ -34,8 +34,14 @@
     v -= pl.base.damage * W.baseDamage;
     SB.allUnits(state, p).forEach(function (u) {
       v += W.unitOnBoard + SB.unitPower(state, u) * W.unitPower +
-        SB.unitRemainingHp(state, u) * W.unitHp + u.shields * W.shield +
-        u.upgrades.length * W.upgrade;
+        SB.unitRemainingHp(state, u) * W.unitHp + u.shields * W.shield;
+    });
+    // An upgrade counts for whoever played it — a bounty sits on an ENEMY unit
+    // but is still worth something to its owner.
+    SB.allUnits(state).forEach(function (u) {
+      u.upgrades.forEach(function (inst) {
+        if (SB.upgradeOwner(u, inst) === p) v += W.upgrade;
+      });
     });
     v += pl.hand.length * W.handCard;
     v += pl.resources.length * W.resource;

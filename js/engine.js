@@ -470,6 +470,7 @@
     if (action.asPilot) {
       const bearer = SB.findUnit(state, action.attachTo);
       expect(bearer, action);
+      inst.owner = me; // a card always goes back to ITS owner, not the bearer's
       bearer.upgrades.push(inst);
       SB.log(state, { type: 'attached', uid: bearer.uid, cardId: inst.cardId, sound: 'attach' });
       (card.abilities || []).forEach(function (ab) {
@@ -527,6 +528,7 @@
     } else if (card.type === 'upgrade') {
       const target = SB.findUnit(state, action.attachTo);
       expect(target, action);
+      inst.owner = me; // upgrades on enemy units still return to their own owner
       target.upgrades.push(inst);
       SB.log(state, { type: 'attached', uid: target.uid, cardId: inst.cardId, sound: 'attach' });
       // Upgrade abilities that trigger when the upgrade itself is played resolve

@@ -150,6 +150,12 @@
     } else if (ctx && ctx.combat) SB.fireTriggers(state, 'whenCombatDamaged', unit, { sourceUid: unit.uid });
   };
 
+  // An upgrade belongs to whoever played it, which is not always the bearer's
+  // controller (bounty upgrades go on enemy units). It returns to ITS owner.
+  SB.upgradeOwner = function (unit, inst) {
+    return inst.owner != null ? inst.owner : unit.owner;
+  };
+
   SB.defeatUnit = function (state, unit, ctx) {
     const arena = SB.arenaOf(state, unit);
     const list = state[arena];
@@ -178,7 +184,9 @@
         lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
         lp.defeated = true; // defeated along with its bearer: no redeploy
         SB.log(state, { type: 'leaderReturned', player: unit.owner });
-      } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
+      } else if (!SB.card(inst.cardId).token) {
+        state.players[SB.upgradeOwner(unit, inst)].discard.push(inst);
+      }
     });
     SB.fireTriggers(state, 'whenDefeated', unit, Object.assign({}, ctx, { sourceUid: unit.uid, combat: ctx && ctx.combat }));
     // "When a friendly unit is defeated" observers on the owner's other units.

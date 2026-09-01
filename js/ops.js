@@ -365,7 +365,7 @@
     const idx = u.upgrades.findIndex(function (inst) { return !SB.card(inst.cardId).unique && !inst.leaderPilot; });
     if (idx < 0) return;
     const inst = u.upgrades.splice(idx, 1)[0];
-    if (!SB.card(inst.cardId).token) state.players[u.owner].discard.push(inst);
+    if (!SB.card(inst.cardId).token) state.players[SB.upgradeOwner(u, inst)].discard.push(inst);
     SB.log(state, { type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
     if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
   };
@@ -891,13 +891,12 @@
     const t = item.ctx && item.ctx.attackTarget;
     const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
     if (!u) return;
-    const owner = state.players[u.owner];
     u.upgrades.slice().forEach(function (inst) {
       u.upgrades.splice(u.upgrades.indexOf(inst), 1);
       if (inst.leaderPilot) {
         const lp = state.players[u.owner].leader;
         lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-      } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
+      } else if (!SB.card(inst.cardId).token) state.players[SB.upgradeOwner(u, inst)].discard.push(inst);
     });
     SB.log(state, { type: 'upgradesDefeated', uid: u.uid, sound: 'destroy' });
     if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});
@@ -922,7 +921,7 @@
       if (inst.cardId === selfCardId) return;
       if (inst.leaderPilot) return;
       bearer.upgrades.splice(bearer.upgrades.indexOf(inst), 1);
-      state.players[bearer.owner].hand.push(inst);
+      state.players[SB.upgradeOwner(bearer, inst)].hand.push(inst);
       SB.log(state, { type: 'returnedToHand', uid: bearer.uid, cardId: inst.cardId });
     });
   };
@@ -1052,6 +1051,7 @@
     apply: function (state, itemStep, action) {
       const u = SB.findUnit(state, action.uid);
       if (!u) return;
+      itemStep.inst.owner = itemStep.player;
       u.upgrades.push(itemStep.inst);
       SB.log(state, { type: 'attached', uid: u.uid, cardId: itemStep.inst.cardId, sound: 'attach' });
     },
@@ -1532,7 +1532,7 @@
       const u = SB.findUnit(state, action.uid);
       if (!u) return;
       const inst = u.upgrades.splice(action.index, 1)[0];
-      if (!SB.card(inst.cardId).token) state.players[u.owner].discard.push(inst);
+      if (!SB.card(inst.cardId).token) state.players[SB.upgradeOwner(u, inst)].discard.push(inst);
       SB.log(state, { type: 'upgradeDefeated', uid: u.uid, cardId: inst.cardId, sound: 'destroy' });
       // Removing +HP can defeat the bearer.
       if (SB.unitRemainingHp(state, u) <= 0) SB.defeatUnit(state, u, {});

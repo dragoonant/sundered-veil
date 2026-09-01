@@ -247,4 +247,49 @@
 
     delete SB.cards['fx-chain'];
   });
+
+  T.add('bounty upgrade: attaches to an enemy unit, opponent collects', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'bounty1');
+    const me = s.active, foe = SB.other(me);
+    const victim = T.putOnBoard(s, foe, 'fx-grunt');
+    T.putInHand(s, me, 'fx-bounty');
+    s = T.act(s, { type: 'playCard', cardId: 'fx-bounty', attachTo: victim.uid });
+    T.eq(SB.findUnit(s, victim.uid).upgrades.length, 1, 'attached to the enemy unit');
+
+    // Defeating it pays the bounty to the opponent of its controller (me).
+    const hand = s.players[me].hand.length;
+    SB.defeatUnit(s, SB.findUnit(s, victim.uid), {}); SB.drainQueue(s);
+    T.eq(s.players[me].hand.length, hand + 1, 'bounty collected by the upgrade owner');
+    // The upgrade returns to ITS owner's discard, not the bearer controller's.
+    T.ok(s.players[me].discard.some(function (i) { return i.cardId === 'fx-bounty'; }),
+      'upgrade in its own owner discard');
+    T.ok(!s.players[foe].discard.some(function (i) { return i.cardId === 'fx-bounty'; }),
+      'not in the bearer owner discard');
+  });
+
+  T.add('bounty upgrade may also attach to a friendly unit', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'bounty2');
+    const me = s.active;
+    const own = T.putOnBoard(s, me, 'fx-grunt');
+    T.putInHand(s, me, 'fx-bounty');
+    s = T.act(s, { type: 'playCard', cardId: 'fx-bounty', attachTo: own.uid });
+    T.eq(SB.findUnit(s, own.uid).upgrades.length, 1, 'attached');
+    const foeHand = s.players[SB.other(me)].hand.length;
+    SB.defeatUnit(s, SB.findUnit(s, own.uid), {}); SB.drainQueue(s);
+    T.eq(s.players[SB.other(me)].hand.length, foeHand + 1, 'my opponent collects it');
+  });
+
+  T.add('bounty is collected on capture too', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'bounty3');
+    const me = s.active, foe = SB.other(me);
+    const victim = T.putOnBoard(s, foe, 'fx-grunt');
+    T.putInHand(s, me, 'fx-bounty');
+    s = T.act(s, { type: 'playCard', cardId: 'fx-bounty', attachTo: victim.uid });
+    const captor = T.putOnBoard(s, me, 'fx-wall');
+    const hand = s.players[me].hand.length;
+    SB.ops.capture(s, { controller: me, ctx: { sourceUid: captor.uid }, op: { op: 'capture' } },
+      { uid: victim.uid });
+    SB.drainQueue(s);
+    T.eq(s.players[me].hand.length, hand + 1, 'capture pays the bounty');
+  });
 })(window.SB = window.SB || {});

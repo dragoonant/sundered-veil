@@ -31,6 +31,9 @@
     'fx-supply': { id: 'fx-supply', type: 'event', cost: 2, aspects: ['command'],
       abilities: [{ trigger: 'onPlay', effects: [{ op: 'draw', amount: 2 }] }] },
     'fx-blade': { id: 'fx-blade', type: 'upgrade', cost: 2, power: 2, hp: 1, aspects: ['aggression'], attachTo: 'friendly' },
+    // Bounty upgrade: no attachTo, so it may go on either side's units.
+    'fx-bounty': { id: 'fx-bounty', type: 'upgrade', cost: 0, aspects: [],
+      abilities: [{ trigger: 'bounty', effects: [{ op: 'draw', amount: 1 }] }] },
     'fx-leaderA': { id: 'fx-leaderA', type: 'leader', aspects: ['command', 'heroism'], deployCost: 5,
       leaderSide: { abilities: [{ trigger: 'action', cost: 1, effects: [{ op: 'experience', amount: 1, target: { who: 'friendly', what: 'unit' } }] }] },
       deployedSide: { arena: 'ground', power: 4, hp: 7, keywords: [] } },
