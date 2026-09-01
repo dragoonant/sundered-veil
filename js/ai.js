@@ -122,19 +122,29 @@
     }
 
     let best = null, bestV = -Infinity;
+    // AI.trace is an opt-in instrumentation hook (tools/ai-trace.mjs). It records the
+    // score of EVERY candidate and its components, so a bad decision can be read off
+    // the numbers instead of guessed at. It must never change what is chosen: the
+    // scoring below is untouched and the rng is consumed in the same order either way.
+    const trace = AI.trace ? [] : null;
     acts.forEach(function (a) {
       let after = SB.apply(state, a);
       after = settle(after);
-      let v = AI.evaluate(after, me);
-      v -= wastedPlayPenalty(state, after, a);
+      const base = AI.evaluate(after, me);
+      const wasted = wastedPlayPenalty(state, after, a);
+      let v = base - wasted;
+      let swing = 0;
       // Hard: one-ply min over the opponent's best reply.
       if (difficulty === 'hard' && !SB.isTerminal(after) && after.queue.length === 0 &&
           after.phase === 'action' && after.active !== me) {
-        v = v - 0.5 * bestReplySwing(after, SB.other(me));
+        swing = bestReplySwing(after, SB.other(me));
+        v = v - 0.5 * swing;
       }
       v += (rand() - 0.5) * 2 * noise;
+      if (trace) trace.push({ action: a, value: v, base: base, wasted: wasted, swing: swing });
       if (v > bestV) { bestV = v; best = a; }
     });
+    if (trace) AI.lastScores = { me: me, best: best, bestV: bestV, all: trace };
     return best;
   };
 

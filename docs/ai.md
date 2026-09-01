@@ -143,9 +143,59 @@ The next step is to instrument, not to theorise: log `evaluate()` for `Kael's Re
 against a deck it beats under random play and loses to under the AI, and find the turn
 where the policy's choice diverges from the obvious line.
 
+## Instrumented trace — what the numbers actually say
+
+`tools/ai-trace.mjs` replays one seeded game and records every candidate action's score
+through the `AI.trace` hook in js/ai.js. The hook is opt-in and behaviour-neutral: the
+scoring is untouched and the rng is consumed in the same order either way, verified by
+replaying games with tracing off and on and diffing the results.
+
+```
+node tools/ai-trace.mjs --deck0 deck-p5a --deck1 deck-p8a --seed "bal1|deck-p5a|deck-p8a|0" --side 1
+```
+
+### Confirmed defect: banking a resource is a coin flip
+
+`resourceCard` decisions are **100% exact ties, in every deck measured** — and they are
+18-21% of every decision the AI makes. `sideValue` counts resources by COUNT alone
+(`v += pl.resources.length * W.resource`, js/ai.js), so every candidate bank scores
+identically and the winner is whichever card `legalActions` happened to list first.
+Roughly a fifth of the AI's play is decided by array order, and it will cheerfully bank
+its best card.
+
+`mulligan` is 100% tied too, but that is once a game and binary; the resource choice
+recurs every regroup phase for the whole game.
+
+### What the trace did NOT explain
+
+The instrumentation was built to explain WHY the AI misplays Kael's Redemption
+specifically, and on that it failed. Across 6 traced games each for three badly-piloted
+and two well-piloted decks (1120 decisions), none of the obvious aggregate signals
+separate them:
+
+```
+deck                          W-L   decisions   tie%  term-flip%  attack-declined%
+Kael's Redemption (-25.8)     0-6         205   46.8         3.4              12.7
+Emperor's Design  (-17.2)     2-4         246   37.4        12.6              17.1
+Gorvax's Court    (-18.5)     3-3         239   42.7         9.6              12.6
+Sera's Rescue     (+14.3)     6-0         189   37.0         7.4              16.9
+Kade's Contract   (+11.9)     5-1         241   41.5         3.3              10.8
+```
+
+Sera's Rescue declines the most attacks (16.9%) and is the best-piloted deck; Kade's
+Contract has a higher tie rate than two of the three failures. So the deck-specific
+cause is still open — do not assume it is the tie rate just because the tie rate is bad.
+
+The obvious next experiment: give `sideValue` a per-card term for what is banked (cost
+and playability, not just count), then re-run `--policy ai` and see whether the 53.9-point
+spread narrows toward the 28.9 of random play. That is a real AI change, so measure it
+before and after rather than reasoning about it.
+
 ## Known gaps (future passes)
 
 - No initiative-timing policy (when to claim vs squeeze one more action).
 - Credits/Force/plot resources not separately valued.
+- **Resources are valued by count only, so WHICH card is banked is invisible and every
+  `resourceCard` choice is an exact tie broken by list order — ~19% of all decisions.**
 - `settle()` greedily resolves choice queues from the chooser's perspective —
   fine for single choices, weak for long divided-damage chains.
