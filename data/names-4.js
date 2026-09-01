@@ -131,6 +131,6 @@
   Object.keys(D).forEach(function (id) { SB.names.decks[id] = D[id]; });
 
   // Power-token flavor: the Current.
-  SB.names.keywords.plot = 'Scheme';
+  SB.names.keywords.plot = 'Plot';
   SB.names.ui.forceToken = 'The Current';
 })(window.SB = window.SB || {});

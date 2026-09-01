@@ -17,6 +17,9 @@ Read these before doing anything:
 - No build step. Plain browser JS, IIFEs on the single `SB` namespace
   (`(function (SB) { ... })(window.SB = window.SB || {})`). `index.html` and `tests.html`
   load scripts in commented dependency order — a new data/engine file must be added to BOTH.
+  The one exception is `data/source-local.js` (gitignored local playtesting override,
+  built by `tools/gen-source-names.mjs`): `index.html` only, so the text tests keep
+  exercising the generated describers rather than the source material’s printed text.
 - Engine surface is exactly `SB.legalActions(state)`, `SB.apply(state, action)`,
   `SB.isTerminal(state)`. `apply` never mutates.
 - All display text lives in `names.js`. Everywhere else uses stable internal ids.

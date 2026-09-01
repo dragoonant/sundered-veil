@@ -4,10 +4,10 @@
 (function (SB) {
   'use strict';
   Object.assign(SB.cards, {
-  "sor-005": {"id":"sor-005","type":"leader","aspects":["heroism","vigilance"],"traits":["tr12","tr32"],"unique":true,"deployCost":5,
+  "sor-005": {"id":"sor-005","type":"leader","aspects":["heroism","vigilance"],"traits":["tr12","tr32"],"unique":true,"deployCost":6,
     "leaderSide":{"abilities":[{"trigger":"action","cost":1,"effects":[{"op":"shield","amount":1,"target":{"who":"friendly","what":"unit","aspect":"heroism","playedThisRound":true}}]}]},
     "deployedSide":{"arena":"ground","power":4,"hp":7,"abilities":[{"trigger":"onAttack","effects":[{"op":"shield","amount":1,"target":{"who":"any","what":"unit","notSelf":true,"optional":true}}]}]}},
-  "sor-010": {"id":"sor-010","type":"leader","aspects":["aggression","villainy"],"traits":["tr12","tr17","tr35"],"unique":true,"deployCost":5,
+  "sor-010": {"id":"sor-010","type":"leader","aspects":["aggression","villainy"],"traits":["tr12","tr17","tr35"],"unique":true,"deployCost":7,
     "leaderSide":{"abilities":[{"trigger":"action","cost":1,"condition":{"if":"playedAspectThisPhase","aspect":"villainy"},"effects":[{"op":"damage","amount":1,"target":{"who":"any","what":"unit"}},{"op":"damage","amount":1,"target":{"who":"any","what":"base"}}]}]},
     "deployedSide":{"arena":"ground","power":5,"hp":8,"abilities":[{"trigger":"onAttack","effects":[{"op":"damage","amount":2,"target":{"who":"any","what":"unit","optional":true}}]}]}},
   "sor-021": {"id":"sor-021","type":"base","aspects":["vigilance"],"hp":30},

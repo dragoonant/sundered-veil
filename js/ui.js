@@ -600,7 +600,7 @@
       case 'indirectTo': case 'dividedTo': return a.target.kind === 'base' ? 'Assign 1 to base' : 'Assign 1 to ' + unitName(s, a.target.uid);
       case 'mayReady': return a.uid == null ? SB.names.ui.decline : 'Ready: ' + unitName(s, a.uid);
       case 'takeFromDiscard': return a.index === -1 ? SB.names.ui.decline : 'Return: ' + cardName(s.players[a.player].discard[a.index].cardId);
-      case 'plotPlay': return a.resourceIndex === -1 ? SB.names.ui.decline : 'Scheme: ' + cardName(a.cardId);
+      case 'plotPlay': return a.resourceIndex === -1 ? SB.names.ui.decline : SB.names.keywords.plot + ': ' + cardName(a.cardId);
       case 'plotAttach': return 'Attach to: ' + unitName(s, a.uid);
       case 'leaderTrigger': return a.use ? SB.names.ui.leaderAbility : SB.names.ui.decline;
       case 'massExhaust': case 'budgetExhaust': return a.uid == null ? 'Stop' : 'Exhaust: ' + unitName(s, a.uid);

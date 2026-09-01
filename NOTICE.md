@@ -20,5 +20,11 @@ All **expression** in this project is original:
 This project is not affiliated with, endorsed by, or connected to Fantasy Flight Games,
 Lucasfilm Ltd., or The Walt Disney Company.
 
+A local, gitignored override layer (`data/source-local.js`, built by
+`tools/gen-source-names.mjs` from a scratch database dump) may substitute source-material
+display names and printed rules text on a developer machine, so implemented mechanics can
+be checked against the cards they were derived from. That file is never committed and is
+absent from any published build, which falls back to the original names above.
+
 Maintenance rule: any behavior change that affects the claims above must update this file
 in the same commit.
