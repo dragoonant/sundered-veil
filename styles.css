@@ -126,7 +126,7 @@ button:disabled { opacity: .4; cursor: default; }
 .bz-arena-ground .bz-line, .bz-arena-ground .bz-bracket { stroke: var(--bz-ground); }
 .bz-arena-space  .bz-line, .bz-arena-space  .bz-bracket { stroke: var(--bz-space); }
 .bz-arena .bz-fill { fill: #0d1424; opacity: .8; }
-.bz-arena-art { opacity: .85; }
+.bz-zone-art { opacity: .85; }   /* arena and pile-slot scenery */
 .bz-arena-label { font-size: 54px; letter-spacing: 10px; fill: #ffffff; opacity: .34; }
 .bz-grid line { stroke: #ffffff; stroke-width: 1.5; opacity: .1; }
 .bz-seam { fill: url(#bz-seam); }

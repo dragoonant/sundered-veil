@@ -73,6 +73,31 @@
     'arena-ground': LAYOUT.arenas.ground, 'arena-space': LAYOUT.arenas.space,
   };
 
+  // ---- scenery -------------------------------------------------------------
+  // Four zones are painted with a scene instead of left empty: the two arenas and the
+  // two slots that hold a loose pile. Each has a set of interchangeable shots, and
+  // which one you get is rolled per game rather than fixed, so a long session does not
+  // play out against the same board. Both players' resource rows draw the SAME roll —
+  // one board, one location, seen from two sides — but the two arenas roll separately.
+  const SCENES = 5;                      // shots per set; files are <key>-1..5.png
+  const SLOT_SCENE = { resources: 'slot-res', discard: 'slot-disc' };
+  function sceneTargets() {
+    const t = { 'arena-ground': ['arena-art-ground'], 'arena-space': ['arena-art-space'] };
+    for (const slot in SLOT_SCENE) {
+      t[SLOT_SCENE[slot]] = ['slot-art-mine-' + slot, 'slot-art-theirs-' + slot];
+    }
+    return t;
+  }
+  const lastScene = {};
+  function roll(key) {
+    // Rerolled away from the shot just used: a random pick that repeats itself back to
+    // back reads as a bug rather than as chance.
+    let n = 1 + Math.floor(Math.random() * SCENES);
+    if (n === lastScene[key] && SCENES > 1) n = 1 + (n % SCENES);
+    lastScene[key] = n;
+    return 'art/' + key + '-' + n + '.png';
+  }
+
   // ---- drawing -------------------------------------------------------------
 
   const NS = 'http://www.w3.org/2000/svg';
@@ -100,6 +125,22 @@
       g.appendChild(svgEl('path', { class: 'bz-bracket',
         d: 'M' + (cx + s[0] * b) + ',' + cy + ' L' + cx + ',' + cy + ' L' + cx + ',' + (cy + s[1] * b) }));
     });
+    return g;
+  }
+
+  // An empty image layer sized and rounded to a zone, filled in later by rollScenes.
+  // Clipped rather than merely sized because the art is cropped with "slice" to cover
+  // the box, and the overflow has to stop at the rounded corner the frame draws.
+  function artLayer(rect, id, radius) {
+    const g = svgEl('g', { class: 'bz-artlayer' });
+    const clipId = 'bz-clip-' + id;
+    const cp = svgEl('clipPath', { id: clipId });
+    cp.appendChild(svgEl('rect', { x: rect.x, y: rect.y, width: rect.w, height: rect.h,
+      rx: radius, ry: radius }));
+    g.appendChild(cp);
+    g.appendChild(svgEl('image', { id: id, x: rect.x, y: rect.y, width: rect.w,
+      height: rect.h, preserveAspectRatio: 'xMidYMid slice',
+      'clip-path': 'url(#' + clipId + ')', class: 'bz-zone-art' }));
     return g;
   }
 
@@ -189,14 +230,7 @@
     ['ground', 'space'].forEach(function (which) {
       const r = LAYOUT.arenas[which];
       const g = svgEl('g', { class: 'bz-arena bz-arena-' + which });
-      const clipId = 'bz-clip-' + which;
-      const cp = svgEl('clipPath', { id: clipId });
-      cp.appendChild(svgEl('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 20 }));
-      g.appendChild(cp);
-      const art = svgEl('image', { id: 'arena-art-' + which, x: r.x, y: r.y,
-        width: r.w, height: r.h, preserveAspectRatio: 'xMidYMid slice',
-        'clip-path': 'url(#' + clipId + ')', class: 'bz-arena-art' });
-      g.appendChild(art);
+      g.appendChild(artLayer(r, 'arena-art-' + which, 20));
       g.appendChild(grid(r));
       g.appendChild(frame(r, 'bz-arena-frame', 20));
       g.appendChild(label(SB.names.ui.zones[which === 'ground' ? 'groundArena' : 'spaceArena'],
@@ -216,6 +250,10 @@
       const g = svgEl('g', { class: 'bz-row bz-row-' + side });
       SLOT.forEach(function (s) {
         const r = LAYOUT[side][s.id];
+        // The two slots that hold a loose PILE rather than a single card get a scene
+        // behind them, for the same reason the arenas do. The deck and leader slots
+        // don't: a card covers them completely, so art there would never be seen.
+        if (SLOT_SCENE[s.id]) g.appendChild(artLayer(r, 'slot-art-' + side + '-' + s.id, 12));
         g.appendChild(frame(r, 'bz-slot'));
         const ly = mine ? r.y - LABEL_GAP : r.y + r.h + LABEL_GAP + 22;
         g.appendChild(label(SB.names.ui.zones[LABEL_KEY[s.id]], r.x + r.w / 2, ly));
@@ -241,11 +279,18 @@
         el.style.width = pct(r.w, W);
         el.style.height = pct(r.h, H);
       }
+      this.rollScenes();
     },
-    // Fill an arena's art slot. Left empty until the ground/space art exists.
-    setArenaArt: function (which, href) {
-      const img = document.getElementById('arena-art-' + which);
-      if (img) img.setAttribute('href', href);
+    // Deal every painted zone a fresh scene. Called on init and at every new game.
+    rollScenes: function () {
+      const targets = sceneTargets();
+      for (const key in targets) {
+        const href = roll(key);
+        targets[key].forEach(function (id) {
+          const img = document.getElementById(id);
+          if (img) img.setAttribute('href', href);
+        });
+      }
     },
   };
 })(window.SB = window.SB || {});

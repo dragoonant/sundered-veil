@@ -7,6 +7,7 @@
 //   --only <id[,id]>   exact-match ids only
 //   --limit <n>        stop after n generations
 //   --force            regenerate even if the file exists
+//   --size <WxH>       output size (default 512x704 portrait; arenas use 1024x640)
 // Key resolution: --key flag > HF_TOKEN env > .hf_token file.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -29,6 +30,8 @@ const outDir = join(root, flag('--out') || 'art');
 const prompts = JSON.parse(readFileSync(promptFile, 'utf8'));
 const only = flag('--only') ? flag('--only').split(',') : null;
 const limit = flag('--limit') ? Number(flag('--limit')) : Infinity;
+// Card art is portrait; the board arena panels are wide landscape.
+const size = flag('--size') || '512x704';
 
 mkdirSync(outDir, { recursive: true });
 
@@ -54,7 +57,7 @@ for (const p of plan) {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'black-forest-labs/FLUX.1-schnell', prompt,
-        size: '512x704', response_format: 'b64_json' }),
+        size: size, response_format: 'b64_json' }),
     });
     if (r.status !== 200) {
       const body = await r.text();

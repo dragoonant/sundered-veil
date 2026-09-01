@@ -129,6 +129,7 @@
   function newGame() {
     SB.sound.reset();
     SB.sound.startAmbience();
+    SB.boardArt.rollScenes();
     const deck = sel.value;
     const others = Object.keys(SB.decks).filter(function (d) { return d !== deck && d.indexOf('fixture') < 0; });
     const aiDeck = others[Math.floor(Math.random() * others.length)];
