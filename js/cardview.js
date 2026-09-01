@@ -213,6 +213,11 @@
       row.appendChild(el('span', 'stat hp' + (dmg > 0 ? ' damaged' : ''), (card.hp - dmg) + '/' + card.hp));
       return row;
     }
+    // An UNDEPLOYED leader still prints the stats it will have as a unit — faceDef only
+    // swaps in deployedSide once a live unit exists, so without this the leader card
+    // shows no numbers at all in the leader zone, in hand, or in the preview.
+    if (def.power == null && def.hp == null &&
+        card.type === 'leader' && card.deployedSide) def = card.deployedSide;
     if (def.power == null && def.hp == null) return null;
     const row = el('div', 'card-stats');
     if (unit && state) {
@@ -220,8 +225,13 @@
       const rem = SB.unitRemainingHp(state, unit);
       row.appendChild(el('span', 'stat hp' + (unit.damage > 0 ? ' damaged' : ''), String(rem)));
     } else {
-      if (def.power != null) row.appendChild(el('span', 'stat ap', String(def.power)));
-      if (def.hp != null) row.appendChild(el('span', 'stat hp', String(def.hp)));
+      // An upgrade's numbers are a MODIFIER to whatever it is attached to, not its own
+      // body, and the card prints them signed (+3/+1). Bare "3 1" reads as a unit's
+      // stats and is the wrong claim.
+      const sign = card.type === 'upgrade' ? function (n) { return (n >= 0 ? '+' : '') + n; }
+        : function (n) { return String(n); };
+      if (def.power != null) row.appendChild(el('span', 'stat ap', sign(def.power)));
+      if (def.hp != null) row.appendChild(el('span', 'stat hp', sign(def.hp)));
     }
     return row;
   }
