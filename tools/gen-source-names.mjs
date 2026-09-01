@@ -118,6 +118,21 @@ if (existsSync(uniquePath) && !FETCH) {
   process.exit(2);
 }
 
+// ---- unescape the dump's text fields --------------------------------------
+// The card database stores rules text ESCAPED rather than raw: a line break arrives as
+// the two characters backslash-n, and an apostrophe as backslash-apostrophe. Left alone
+// that puts stray backslashes on the card face AND defeats the line split below, so a
+// multi-line card collapses into one run-on line. One pass, so an escaped backslash is
+// not re-read as the start of the next escape.
+const UNESCAPE = { n: '\n', r: '\r', t: '\t' };
+const unescape = v => typeof v === 'string'
+  ? v.replace(/\\(.)/g, (m, c) => (Object.prototype.hasOwnProperty.call(UNESCAPE, c) ? UNESCAPE[c] : c))
+  : v;
+for (const r of rows.values()) {
+  for (const k of ['name', 'subtitle', 'text', 'deployBox', 'epicAction']) r[k] = unescape(r[k]);
+  r.traits = r.traits.map(unescape);
+}
+
 // ---- trait ids ------------------------------------------------------------
 // tr01.. are assigned by tools/convert-cards.mjs as the sorted union of every trait
 // across the imported cards. Rebuilding it the same way here reproduces that mapping
@@ -154,6 +169,15 @@ for (const id of [...ourIds].sort()) {
   cards[id] = r.subtitle ? { name: r.name, subtitle: r.subtitle } : { name: r.name };
   const l = toLines(r, isLeaderId.has(id));
   if (l.length) text[id] = l;
+}
+
+// A stray backslash on a card face means the dump gained an escape the unescape pass
+// above does not know about. Fail loudly rather than shipping it to the card.
+const escaped = Object.entries(text).filter(([, ls]) => ls.some(l => l.includes('\\')));
+if (escaped.length) {
+  console.error('! ' + escaped.length + ' card(s) still carry a backslash after unescaping, e.g.');
+  escaped.slice(0, 3).forEach(([id, ls]) => console.error('    ' + id + ': ' + ls.find(l => l.includes('\\')).slice(0, 110)));
+  process.exit(2);
 }
 
 const body = [
