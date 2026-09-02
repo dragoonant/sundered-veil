@@ -103,9 +103,20 @@ Observer filters on triggered abilities: `playedTrait`, `playedUnique`,
   ability; `useTarget` also accepts `'@defender'`, `'@attackEnded'`, `'@played'`.
 - `amountRef` values are listed in `SB.resolveAmount` (js/effects.js); every new
   ref needs a phrase in `amountText` (js/text.js).
-- The op registry lives in js/effects.js + js/ops.js. **A new op requires: the
-  handler, a describer in js/text.js, and a test.** Validation rejects unknown
-  ops/triggers/keywords at load.
+- The op registry lives in js/effects.js + js/ops.js, extended by js/ops2.js (the
+  competitive-deck expansion). **A new op requires: the handler, a describer in
+  js/text.js, and a test.** Validation rejects unknown ops/triggers/keywords at load.
+- js/ops2.js also hosts the extension hooks: `SB.extraConditions[name]`,
+  `SB.extraAmounts(state, item, target, ref)` and `SB.extraSelector(...)` are consulted
+  by effects.js before it throws on an unknown condition / amountRef / selector key;
+  `SB.unitAllAbilities` is the one list of a unit's abilities (printed, upgrade-borne
+  — pilot cards mark `asPilotOnly` / `asUnitOnly` — temporary, and aura-granted via
+  `grant.abilities`); `SB.removeUpgrade` is the single upgrade-removal path so
+  "When Defeated" on an upgrade and `ejectOnDefeat` pilots fire from one place.
+- Card-level fields the engine reads outside abilities: `entersReadyIf`, `costMod`,
+  `costModAttach` (`cards` or `uniqueOnly`), `attachArena`, `attachFilter`
+  (`trait`, `notTrait`, `uniqueOnly`, `damaged`), `staticFlags`, `discardAction`,
+  `copyLimit`, and on bases `startingHandDelta`. Each has a line in js/text.js.
 
 Selectors: see `SB.selectorCandidates` — `who/what/arena/trait/aspect/maxCost/
 minPower/damaged/notSelf/nonLeader/tokenOnly/...`; every filter needs a phrase in

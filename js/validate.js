@@ -12,7 +12,11 @@
     'whenCombatDamaged', 'combatAura', 'onOpponentDraw', 'whenHealed',
     'onIndirectUnitDamage', 'onDeployPilot', 'onPlayAsPilot', 'onNonCombatDamage',
     'onForceUnitAttack', 'onRevealOrDiscard', 'onFriendlyAttack',
-    'onFriendlyDefeated', 'defenderAura', 'onFriendlyAttackEnds', 'onReadyTax'];
+    'onFriendlyDefeated', 'defenderAura', 'onFriendlyAttackEnds', 'onReadyTax',
+    // competitive expansion (js/ops2.js)
+    'onTakeInitiative', 'onWhenDefeatedUsed', 'onFriendlyDamagedSurvives', 'onEnemyUnitDefeated',
+    'onFriendlyUpgradeDefeated', 'onFriendlyDealsDamageToEnemyUnit', 'onOpponentPlaysCard',
+    'onOwnBaseCombatDamaged'];
   const ASPECTS = ['command', 'aggression', 'cunning', 'vigilance', 'heroism', 'villainy'];
 
   function fail(id, msg) { throw new Error('content error [' + id + ']: ' + msg); }

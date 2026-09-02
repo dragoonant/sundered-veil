@@ -18,6 +18,32 @@ missing mechanic):
 - Abilities lent to another attacker by a support-style unit last until end of
   round rather than only for that one attack.
 
+## Competitive-deck expansion (js/ops2.js)
+
+- **"Name a card"** effects choose among the cards the opponent has already shown
+  (their hand as revealed by the effect, and their discard pile) rather than naming
+  blind from the whole card pool. Blocking ("can't play cards with that name") and
+  silencing ("copies lose all abilities") then work exactly as printed.
+- **Damage replacement is decided by the engine, not by a prompt.** A shield-redirect
+  guardian breaks a shield only when the hit would defeat the friend; a
+  sacrifice-to-prevent unit gives up its cheapest kind-sharing friend only when the hit
+  would defeat it. Both are "you may" on the card; a prompt inside the damage routine
+  would stall every combat resolution.
+- **"Defeat any number of upgrades on a unit"** defeats every upgrade on the chosen unit.
+- **"Choose an opponent; for this phase they may play this unit from your discard pile
+  for free"** is offered to the opponent once, immediately, rather than staying open for
+  the rest of the phase.
+- **"Draw any number of players a card"** (choose any number of players) is two
+  yes/no choices, one per player.
+- **A leader's "use that ability again"** repeats the most recent last-words ability
+  used by its controller; the printed timing ("when you use") is the same moment.
+- **Cards played from a resource** are replaced by the top card of the deck in the same
+  ready/exhausted state, exactly as a smuggled card is.
+- **"Deal 1 damage to any number of bases"** is one yes/no per base.
+- **The clone unit** copies the printed definition (stats, keywords, abilities) of the
+  chosen unit; it keeps its own card identity for uniqueness and naming.
+- **Deck-size bases** ("minimum deck size +10") have no effect: decks are prebuilt.
+
 ## From CARD-LOG-AND-TARGETING-SPEC.md
 
 - **§4, "never auto-resolve a forced target silently."** The engine still resolves a
