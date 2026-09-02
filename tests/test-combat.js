@@ -200,6 +200,49 @@
     T.ok(s2.players[me].discard.some(function (i) { return i.cardId === 'fx-blade'; }), 'upgrade discarded');
   });
 
+  // tools/convert-cards.mjs stamps every imported upgrade attachTo:'friendly' as a
+  // DEFAULT, to be corrected by hand. Whether an upgrade may go on an enemy unit is not
+  // a judgement call: the printed text says "Attach to a friendly ..." or it does not,
+  // and only those that say it are restricted. A re-import that forgets the correction
+  // silently makes a whole class of cards unplayable as designed, and nothing else in
+  // the suite would notice — so the rule is asserted here against the real card data.
+  T.add('upgrade: only upgrades printed "friendly" refuse an enemy bearer', function () {
+    const FRIENDLY = ['lof-091', 'lof-140', 'lof-201', 'sec-256', 'shd-124', 'shd-251'];
+    const upgrades = Object.keys(SB.cards).filter(function (id) {
+      return SB.cards[id].type === 'upgrade' && !/^fx-/.test(id);
+    });
+    T.ok(upgrades.length > 20, 'found the real upgrades: ' + upgrades.length);
+    const restricted = upgrades.filter(function (id) {
+      return SB.cards[id].attachTo === 'friendly';
+    }).sort();
+    T.eq(restricted.join(' '), FRIENDLY.slice().sort().join(' '),
+      'exactly the printed-friendly upgrades are restricted');
+    upgrades.forEach(function (id) {
+      const a = SB.cards[id].attachTo;
+      T.ok(a === undefined || a === 'friendly' || a === 'enemy',
+        id + ' has a legal attachTo (' + a + ')');
+    });
+  });
+
+  T.add('upgrade: an unrestricted upgrade can be played onto an enemy unit', function () {
+    let s = duel('attach-enemy');
+    const me = s.active, foe = SB.other(me);
+    const mine = T.putOnBoard(s, me, 'fx-grunt');
+    const theirs = T.putOnBoard(s, foe, 'fx-grunt');
+    // ash-088 is the punishing condition: it prints no attach restriction, so putting it
+    // on the OPPONENT's unit — the only reason to own it — has to be a legal action.
+    T.putInHand(s, me, 'ash-088');
+    T.giveResources(s, me, 9);
+    const plays = SB.legalActions(s).filter(function (a) {
+      return a.type === 'playCard' && a.cardId === 'ash-088';
+    });
+    const targets = plays.map(function (a) { return a.attachTo; });
+    T.ok(targets.indexOf(theirs.uid) >= 0, 'enemy unit offered');
+    T.ok(targets.indexOf(mine.uid) >= 0, 'own unit still offered');
+    const s2 = T.act(s, { type: 'playCard', cardId: 'ash-088', attachTo: theirs.uid });
+    T.eq(SB.findUnit(s2, theirs.uid).upgrades.length, 1, 'attached to the enemy unit');
+  });
+
   T.add('win: base at 0 ends game', function () {
     let s = duel('win');
     const me = s.active, foe = SB.other(me);

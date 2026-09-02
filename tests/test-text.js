@@ -61,4 +61,58 @@
     });
     if (missing.length) throw new Error('missing names: ' + missing.join(', '));
   });
+
+  // The card face is a PROMISE about the rules. A keyword badge that the engine would
+  // not honour is worse than no badge at all: the player reads an enemy attack that
+  // legally ignores their "Sentinel" as a broken game. The glossary is free to reach
+  // into effect data to explain a keyword a card can GRANT — the badge line is not.
+  T.add('presentation: the keyword badge never claims what the engine denies', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'kw-face');
+    const me = s.active;
+    const units = Object.keys(SB.cards).filter(function (id) {
+      return SB.cards[id].type === 'unit' && !/^fx-/.test(id) && !/^tok-/.test(id);
+    });
+    T.ok(units.length > 100, 'checking the real unit cards: ' + units.length);
+    const liars = [];
+    units.forEach(function (id) {
+      const ref = T.putOnBoard(s, me, id);
+      const u = SB.findUnit(s, ref.uid);
+      if (!u) return;
+      SB.cardFaceKeywords(id, u, s).forEach(function (kw) {
+        if (!SB.hasKeyword(s, u, kw.k)) liars.push(id + ' shows ' + kw.k);
+      });
+    });
+    if (liars.length) {
+      throw new Error(liars.length + ' card(s) advertise a keyword they do not have: ' +
+        liars.slice(0, 5).join(', '));
+    }
+  });
+
+  T.add('presentation: a granted keyword appears on the face once it is granted', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'kw-grant');
+    const me = s.active;
+    // sec-120 GRANTS sentinel from an ability; it has none of its own.
+    const ref = T.putOnBoard(s, me, 'sec-120');
+    const u = SB.findUnit(s, ref.uid);
+    const shown = function () {
+      return SB.cardFaceKeywords('sec-120', u, s).map(function (k) { return k.k; });
+    };
+    T.eq(shown().join(','), '', 'no badge before the grant');
+    u.tempKeywords = ['sentinel'];
+    T.eq(shown().join(','), 'sentinel', 'badge appears once granted');
+    T.ok(SB.hasKeyword(s, u, 'sentinel'), 'and the engine agrees');
+    // The glossary still explains a keyword the card can hand out, badge or not.
+    T.ok(SB.cardGlossary('sec-120', null, null).some(function (g) { return /Sentinel/i.test(g.name); }),
+      'glossary still explains Sentinel');
+  });
+
+  T.add('presentation: a printed keyword shows in hand and on board', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'kw-printed');
+    const me = s.active;
+    T.eq(SB.cardFaceKeywords('fx-wall', null, null).map(function (k) { return k.k; }).join(','),
+      'sentinel', 'printed keyword shows with no unit (in hand)');
+    const ref = T.putOnBoard(s, me, 'fx-wall');
+    T.ok(SB.cardFaceKeywords('fx-wall', SB.findUnit(s, ref.uid), s)
+      .some(function (k) { return k.k === 'sentinel'; }), 'and on the board');
+  });
 })(window.SB = window.SB || {});

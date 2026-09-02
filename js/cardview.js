@@ -174,7 +174,7 @@
     if (traits.length) typeLine.appendChild(el('span', 'traits', traits.join(' · ')));
     plate.appendChild(typeLine);
 
-    const kws = collectKeywords(card, ref.unit, state);
+    const kws = liveKeywords(card, ref.unit, state);
     if (kws.length) {
       plate.appendChild(el('div', 'card-kw', kws.map(function (k) { return k.label; }).join('  ·  ')));
     }
@@ -260,14 +260,43 @@
     if (unit.damage > 0) root.appendChild(el('div', 'damage-marker', String(unit.damage)));
   }
 
-  // ---- glossary collection (§8): walk the WHOLE definition -----------------
-  function collectKeywords(card, unit, state) {
+  function keywordBag() {
     const found = {};
-    function addKw(kw) {
-      if (!kw || !kw.k || found[kw.k]) return;
-      const nm = SB.names.keywords[kw.k] || kw.k;
-      found[kw.k] = { k: kw.k, n: kw.n, label: kw.n != null ? nm + ' ' + kw.n : nm };
+    return {
+      found: found,
+      add: function (kw) {
+        if (!kw || !kw.k || found[kw.k]) return;
+        const nm = SB.names.keywords[kw.k] || kw.k;
+        found[kw.k] = { k: kw.k, n: kw.n, label: kw.n != null ? nm + ' ' + kw.n : nm };
+      },
+      list: function () { return Object.keys(found).map(function (k) { return found[k]; }); },
+    };
+  }
+
+  // ---- the badge line: keywords the card ACTUALLY has right now ------------
+  // Deliberately NOT the glossary walk below. A card whose ability GRANTS a keyword
+  // ("give a friendly unit Sentinel") mentions that keyword in its data, and printing
+  // it on the face makes the card claim a defence it does not have — the player then
+  // reads an enemy attack that legally ignores it as a broken rule. Off the board there
+  // is no unit to ask, so a card in hand shows what is printed on it and nothing more.
+  function liveKeywords(card, unit, state) {
+    const bag = keywordBag();
+    if (!unit || !state) { (card.keywords || []).forEach(bag.add); return bag.list(); }
+    if (unit.keywordsSuppressed) return [];
+    SB.unitKeywords(state, unit).forEach(bag.add);          // printed + upgrades
+    (unit.tempKeywords || []).forEach(function (k) { bag.add({ k: k }); });
+    if (SB.auraGrants) {
+      SB.auraGrants(state, unit).forEach(function (g) { (g.keywords || []).forEach(bag.add); });
     }
+    return bag.list();
+  }
+
+  // ---- glossary collection (§8): walk the WHOLE definition -----------------
+  // The hover help is the opposite case: a card that can GRANT Sentinel still has to
+  // explain what Sentinel is, so this keeps reaching into the effect data.
+  function collectKeywords(card, unit, state) {
+    const bag = keywordBag();
+    const found = bag.found, addKw = bag.add;
     function walk(o) {
       if (!o || typeof o !== 'object') return;
       if (Array.isArray(o)) { o.forEach(walk); return; }
@@ -285,6 +314,13 @@
     if (unit && unit.tempKeywords) unit.tempKeywords.forEach(function (k) { addKw({ k: k }); });
     return Object.keys(found).map(function (k) { return found[k]; });
   }
+
+  // The badge line, exposed so the rule "the face never claims a keyword the engine
+  // would not honour" can be asserted against real cards rather than eyeballed.
+  SB.cardFaceKeywords = function (cardId, unit, state) {
+    const card = SB.cards[cardId];
+    return card ? liveKeywords(card, unit, state) : [];
+  };
 
   SB.cardGlossary = function (cardId, unit, state) {
     const card = SB.cards[cardId];
