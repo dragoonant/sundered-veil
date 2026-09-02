@@ -4,7 +4,10 @@
 *.key
 
 # Full-resolution art masters stay out of the repo (downscaled copies go in art/)
-art-masters/
+# The card back is the exception: it is hand-supplied branding, not something
+# tools/gen-art.mjs can regenerate, so the master ships with the repo.
+art-masters/*
+!art-masters/cardback-master.jpg
 
 # Import scratch — work packets may carry third-party names; never commit
 scratch/
@@ -19,7 +22,10 @@ Thumbs.db
 desktop.ini
 
 # Generated assets stay out of the repo (regenerate via tools/gen-art.mjs, tools/gen-sfx.mjs)
-art/
+# art/cardback.jpg is the exception, for the same reason as its master above:
+# no prompt produces it, so without it a fresh clone has no card back at all.
+art/*
+!art/cardback.jpg
 sfx/
 art-gen.log
 art-regen.log
