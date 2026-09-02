@@ -35,6 +35,9 @@
 <script src="data/names-3.js"></script>
 <script src="data/names-4.js"></script>
 <script src="js/logtext.js"></script>
+<!-- UI file, loaded so the card FACE can be asserted against the engine (test-text.js).
+     It touches document only inside render functions, so it loads headlessly. -->
+<script src="js/cardview.js"></script>
 <script src="tests/harness.js"></script>
 <script src="tests/fixtures.js"></script>
 <script src="tests/test-engine-core.js"></script>
