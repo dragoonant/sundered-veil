@@ -111,5 +111,14 @@
   "sor-237": {"id":"sor-237","type":"unit","aspects":["heroism"],"traits":["tr32","tr46","tr10"],"cost":2,"power":2,"hp":3,"arena":"space"},
   "sor-241": {"id":"sor-241","type":"unit","aspects":["heroism"],"traits":["tr32","tr46","tr10"],"cost":3,"power":2,"hp":1,"arena":"space",
     "abilities":[{"trigger":"onPlay","effects":[{"op":"experience","amount":2,"target":{"who":"friendly","what":"unit","trait":"tr32","notSelf":true}}]}]},
+  // ---- competitive-expansion skeletons (tools/pull-sets.mjs); abilities authored by hand ----
+  "sor-045": {"id":"sor-045","type":"unit","aspects":["vigilance","heroism"],"traits":["tr12","tr21"],"unique":true,"cost":3,"power":2,"hp":4,"arena":"ground","keywords":[{"k":"restore","n":2}]},
+  "sor-052": {"id":"sor-052","type":"unit","aspects":["vigilance","heroism"],"traits":["tr32","tr46","tr04"],"unique":true,"cost":8,"power":6,"hp":9,"arena":"space"},
+  "sor-093": {"id":"sor-093","type":"unit","aspects":["command","heroism"],"traits":["tr32"],"cost":1,"power":1,"hp":2,"arena":"ground"},
+  "sor-099": {"id":"sor-099","type":"unit","aspects":["command","heroism"],"traits":["tr32","tr46","tr41"],"unique":true,"cost":4,"power":2,"hp":6,"arena":"space"},
+  "sor-102": {"id":"sor-102","type":"unit","aspects":["command","heroism"],"traits":["tr32","tr46","tr04"],"unique":true,"cost":8,"power":7,"hp":7,"arena":"space","keywords":[{"k":"restore","n":2}]},
+  "sor-134": {"id":"sor-134","type":"unit","aspects":["aggression","villainy"],"traits":["tr17","tr46","tr04"],"cost":6,"power":4,"hp":6,"arena":"space"},
+  "sor-246": {"id":"sor-246","type":"event","aspects":["heroism"],"traits":["tr14"],"cost":3},
+
   });
 })(window.SB = window.SB || {});

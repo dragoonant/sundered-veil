@@ -74,6 +74,9 @@
     });
     T.ok(units.length > 100, 'checking the real unit cards: ' + units.length);
     const liars = [];
+    // Each unit is checked alone and then taken off again: keyword lookups walk the
+    // board for auras, so leaving every unit in play made this quadratic in the card
+    // pool (minutes once the pool passed a thousand units).
     units.forEach(function (id) {
       const ref = T.putOnBoard(s, me, id);
       const u = SB.findUnit(s, ref.uid);
@@ -81,6 +84,8 @@
       SB.cardFaceKeywords(id, u, s).forEach(function (kw) {
         if (!SB.hasKeyword(s, u, kw.k)) liars.push(id + ' shows ' + kw.k);
       });
+      const arena = s[SB.card(id).arena];
+      arena.splice(arena.indexOf(ref), 1);
     });
     if (liars.length) {
       throw new Error(liars.length + ' card(s) advertise a keyword they do not have: ' +

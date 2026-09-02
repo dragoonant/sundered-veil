@@ -71,5 +71,10 @@
   "twi-248": {"id":"twi-248","type":"upgrade","aspects":["heroism"],"traits":["tr20","tr48","tr24"],"unique":true,"cost":1,"power":2,"attachFilter":{"notTrait":"tr46"},"abilities":[{"trigger":"onPlay","condition":{"if":"attachedIs","cards":["twi-011","jtl-201","sec-096"]},"effects":[{"op":"attackWith","target":{"who":"friendly","what":"unit","readyOnly":true},"optionalAttack":true}]}]},
   "twi-251": {"id":"twi-251","type":"event","aspects":["heroism"],"traits":["tr38"],"cost":4,"abilities":[{"trigger":"onPlay","effects":[{"op":"createToken","token":"tok-gh2","amount":2}]}]},
   "twi-257": {"id":"twi-257","type":"event","aspects":[],"traits":["tr38"],"cost":2,"abilities":[{"trigger":"onPlay","effects":[{"op":"draw","amount":2},{"op":"bottomFromHand","amount":2,"condition":{"if":"controlsTokenUnit","not":true}}]}]},
+  // ---- competitive-expansion skeletons (tools/pull-sets.mjs); abilities authored by hand ----
+  "twi-004": {"id":"twi-004","type":"leader","aspects":["vigilance","heroism"],"traits":["tr12","tr21","tr33"],"unique":true,"deployCost":7,"leaderSide":{"abilities":[]},"deployedSide":{"arena":"ground","power":4,"hp":9,"keywords":[{"k":"restore","n":2}]}},
+  "twi-016": {"id":"twi-016","type":"leader","aspects":["cunning","villainy"],"traits":["tr45","tr03"],"unique":true,"deployCost":5,"leaderSide":{"abilities":[]},"deployedSide":{"arena":"ground","power":3,"hp":7}},
+  "twi-116": {"id":"twi-116","type":"unit","aspects":["command"],"traits":["tr05"],"cost":7,"power":0,"hp":0,"arena":"ground"},
+
   });
 })(window.SB = window.SB || {});

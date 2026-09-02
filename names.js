@@ -60,6 +60,9 @@
       chooseDeck: 'Choose your legion', chooseDifficulty: 'Opponent skill',
       startGame: 'Start the battle',
       difficulty: { easy: 'Easy', mid: 'Medium', hard: 'Hard' },
+      // Deck picker groups and the card-pool format a tournament list was built for.
+      deckGroups: { precon: 'Legion decks', competitive: 'Tournament lists' },
+      format: { premier: 'Premier', eternal: 'Eternal' },
       // The per-turn banner and the initiative marker on a leader.
       initiativeYours: 'You hold the initiative',
       initiativeTheirs: 'The opponent holds the initiative',

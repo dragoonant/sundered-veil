@@ -80,16 +80,21 @@
       const d = SB.decks[deckId];
       if (!SB.cards[d.leader] || SB.cards[d.leader].type !== 'leader') fail(deckId, 'bad leader ' + d.leader);
       if (!SB.cards[d.base] || SB.cards[d.base].type !== 'base') fail(deckId, 'bad base ' + d.base);
-      d.cards.forEach(function (cid) {
+      // The sideboard (tournament lists only) is checked like the main deck; the copy
+      // limit applies to main + sideboard together, as in the source rules.
+      const pool = d.cards.concat(d.sideboard || []);
+      pool.forEach(function (cid) {
         const c = SB.cards[cid];
         if (!c) fail(deckId, 'unknown card ' + cid);
         if (c.type === 'leader' || c.type === 'base') fail(deckId, 'deck contains ' + c.type + ' ' + cid);
       });
-      // Copy limit: max 3 of a card id per deck.
+      if (d.format && d.format !== 'premier' && d.format !== 'eternal') fail(deckId, 'unknown format ' + d.format);
+      // Copy limit: max 3 of a card id per deck, unless the card raises its own limit.
       const counts = {};
-      d.cards.forEach(function (cid) { counts[cid] = (counts[cid] || 0) + 1; });
+      pool.forEach(function (cid) { counts[cid] = (counts[cid] || 0) + 1; });
       Object.keys(counts).forEach(function (cid) {
-        if (counts[cid] > 3) fail(deckId, counts[cid] + ' copies of ' + cid);
+        const limit = SB.cards[cid].copyLimit || 3;
+        if (counts[cid] > limit) fail(deckId, counts[cid] + ' copies of ' + cid);
       });
     });
   };

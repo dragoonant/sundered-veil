@@ -53,15 +53,15 @@ if (FETCH) {
 // ---- our card ids, straight out of the repo data files --------------------
 // Parsed textually rather than executed: these files are plain object literals and we
 // only need the key set, not the effect data.
-const SETS = ['sor', 'shd', 'twi', 'jtl', 'lof', 'sec', 'law', 'ash'];
+const SETS = ['sor', 'shd', 'twi', 'jtl', 'lof', 'sec', 'law', 'ash', 'ts26', 'ibh'];
 const ourIds = new Set();
 const isLeaderId = new Set();
 for (const set of SETS) {
   const p = join(root, 'data', 'cards-' + set + '.js');
   if (!existsSync(p)) continue;
   const src = readFileSync(p, 'utf8');
-  for (const m of src.matchAll(/^\s*"([a-z]{3}-\d{3})":/gm)) ourIds.add(m[1]);
-  for (const m of src.matchAll(/^\s*"([a-z]{3}-\d{3})":\s*\{"id":"[^"]+","type":"leader"/gm)) isLeaderId.add(m[1]);
+  for (const m of src.matchAll(/^\s*"([a-z0-9]{3,4}-\d{3})":/gm)) ourIds.add(m[1]);
+  for (const m of src.matchAll(/^\s*"([a-z0-9]{3,4}-\d{3})":\s*\{"id":"[^"]+","type":"leader"/gm)) isLeaderId.add(m[1]);
 }
 if (!ourIds.size) { console.error('no card ids found in data/cards-*.js'); process.exit(2); }
 
@@ -96,7 +96,7 @@ if (existsSync(uniquePath) && !FETCH) {
   source = 'dotgg-cards.json';
   const db = JSON.parse(readFileSync(dbPath, 'utf8'));
   const F = {}; db.names.forEach((n, i) => F[n] = i);
-  const MAIN_SETS = ['SOR', 'SHD', 'TWI', 'JTL', 'LOF', 'SEC', 'LAW', 'ASH', 'IBH'];
+  const MAIN_SETS = ['SOR', 'SHD', 'TWI', 'JTL', 'LOF', 'SEC', 'LAW', 'ASH', 'IBH', 'TS26'];
   // Rules text lives under a different key from dump to dump; take the first present.
   const TEXT_KEYS = ['text', 'rulesText', 'cardText', 'ability', 'abilities', 'body'];
   const textKey = TEXT_KEYS.find(k => k in F);
@@ -213,7 +213,7 @@ const SET_PRODUCT = {
 const decks = {};
 {
   const src = readFileSync(join(root, 'data', 'decks.js'), 'utf8');
-  for (const m of src.matchAll(/"(deck-([sp])[0-9]+[ab])":\s*\{"leader":"([a-z]{3}-\d{3})"/g)) {
+  for (const m of src.matchAll(/"(deck-([sp])[0-9]+[ab])":\s*\{"leader":"([a-z0-9]{3,4}-\d{3})"/g)) {
     const [, deckId, kind, leaderId] = m;
     const leader = cards[leaderId];
     const product = SET_PRODUCT[leaderId.slice(0, 3)];

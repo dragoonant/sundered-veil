@@ -15,6 +15,22 @@ abilities are data, never code. This file is the schema reference.
    test, the fuzz matrix, and the name-integrity gates all pick the set up
    automatically.
 
+## Adding cards to an existing set (the competitive expansion)
+
+`tools/convert-cards.mjs` regenerates whole files and must not run once abilities are
+hand-authored. `tools/pull-sets.mjs <scratchDir>` is the incremental path: it reads the
+per-set swu-db dumps (primary) and the dotgg dump (fallback) from scratch, appends
+skeleton lines for ids not yet in `data/cards-<set>.js` below a marker comment, writes the
+printed text to `<scratch>/workpackets/<set>.json` for the authoring pass, extends
+`<scratch>/trait-map.json` for new traits, and registers the tournament lists from
+`<scratch>/decks.json`. `--dry-run` prints the plan. Existing lines are never touched.
+
+Deck registry fields beyond `leader/base/cards`: `sideboard` (validated like the main
+deck; the 3-copy limit counts main + sideboard), `format` (`premier` | `eternal`, shown
+in the picker via `names.ui.format`) and `group` (`competitive` puts the deck in the
+tournament optgroup and pairs the AI with a deck from the same group). A card may raise
+its own copy limit with `copyLimit: N`.
+
 ## Card shapes
 
 ```js
@@ -48,7 +64,8 @@ abilities are data, never code. This file is the schema reference.
 
 // upgrade
 { id, type: 'upgrade', cost, power?, hp?, aspects,
-  attachTo: 'friendly'|'enemy'|'any', attachArena?, attachFilter?: {trait?, notTrait?, uniqueOnly?},
+  attachTo?: 'friendly'|'enemy',     // omitted = any unit; only printed "friendly" restricts
+  attachArena?, attachFilter?: {trait?, notTrait?, uniqueOnly?},
   costModAttach?: {cards:[ids], delta},
   grantKeywords?: [...], grantTraits?: [...], abilities?: [...] }
 ```

@@ -46,10 +46,25 @@
     deckRow.appendChild(el('span', 'title-field-label', SB.names.ui.chooseDeck));
     const deck = el('select', 'title-select');
     deck.id = 'deck-select';
+    // Two groups: the prebuilt legions, then the tournament lists (data/decks.js
+    // group:'competitive'), each of those labelled with its format so a player knows
+    // which card pool it was built for. Labels come from names.js like everything else.
+    const groups = [['precon', []], ['competitive', []]];
     playableDecks().forEach(function (d) {
-      const o = document.createElement('option');
-      o.value = d; o.textContent = SB.names.decks[d] || d;
-      deck.appendChild(o);
+      const g = SB.decks[d].group === 'competitive' ? 1 : 0;
+      groups[g][1].push(d);
+    });
+    groups.forEach(function (pair) {
+      if (!pair[1].length) return;
+      const og = document.createElement('optgroup');
+      og.label = SB.names.ui.deckGroups[pair[0]];
+      pair[1].forEach(function (d) {
+        const o = document.createElement('option');
+        const fmt = SB.decks[d].format ? ' (' + (SB.names.ui.format[SB.decks[d].format] || SB.decks[d].format) + ')' : '';
+        o.value = d; o.textContent = (SB.names.decks[d] || d) + fmt;
+        og.appendChild(o);
+      });
+      deck.appendChild(og);
     });
     deckRow.appendChild(deck);
     box.appendChild(deckRow);
@@ -101,7 +116,12 @@
   }
 
   function newGame(deckId, difficulty) {
-    const others = playableDecks().filter(function (d) { return d !== deckId; });
+    // The opponent draws from the same group as the player's pick: a legion deck meets
+    // a legion deck, a tournament list meets a tournament list.
+    const group = SB.decks[deckId].group || 'precon';
+    const others = playableDecks().filter(function (d) {
+      return d !== deckId && (SB.decks[d].group || 'precon') === group;
+    });
     const aiDeck = others[Math.floor(Math.random() * others.length)];
     // The first real user gesture of the page happens on this button, which is what
     // browsers wait for before letting audio start.
