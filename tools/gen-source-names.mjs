@@ -139,8 +139,22 @@ const icons = v => typeof v === 'string'
       run => run.match(new RegExp(ASPECT, 'g')).map(a => '[' + a + ']').join(''))
   : v;
 
+// ---- inline markup --------------------------------------------------------
+// The dump marks up some rules text with pseudo-XML the printed card renders as layout
+// or as a symbol. Left alone the tags reach the card face literally ("</bullet>"), so
+// each one is translated into this project's own vocabulary here:
+//   <bullet>..</bullet>  a bulleted list. Runs ACROSS line breaks, so it is resolved
+//                        before the text is split into lines: every line of the block
+//                        gets the bullet the tag stood for.
+//   <uq>                 the unique insignia. This game calls that a CHAMPION
+//                        (js/text.js), and a card face carries no third-party symbol.
+const markup = v => typeof v !== 'string' ? v
+  : v.replace(/<bullet>([\s\S]*?)<\/bullet>/g, (m, block) => block.split('\n')
+        .map(l => (l.trim() ? '• ' + l.trim() : l)).join('\n'))
+     .replace(/<\/?uq>/g, 'champion');
+
 for (const r of rows.values()) {
-  for (const k of ['name', 'subtitle', 'text', 'deployBox', 'epicAction']) r[k] = icons(unescape(r[k]));
+  for (const k of ['name', 'subtitle', 'text', 'deployBox', 'epicAction']) r[k] = markup(icons(unescape(r[k])));
   r.traits = r.traits.map(unescape);
 }
 
@@ -227,6 +241,20 @@ const glued = Object.entries(text).filter(([, ls]) => ls.some(l => RUN.test(l)))
 if (glued.length) {
   console.error('! ' + glued.length + ' card(s) still show a run-together aspect icon, e.g.');
   glued.slice(0, 3).forEach(([id, ls]) => console.error('    ' + id + ': ' + ls.find(l => RUN.test(l)).slice(0, 110)));
+  process.exit(2);
+}
+
+// Same again for a surviving pseudo-XML tag. Listing the known ones above and failing
+// on anything else is deliberate: a dump that gains a tag we have never seen should
+// stop the build, not quietly print "</bullet>" on a card.
+const TAG = /<\/?[a-zA-Z][a-zA-Z0-9-]*>/;
+const tagged = [
+  ...Object.entries(text),
+  ...Object.entries(cards).map(([id, c]) => [id, [c.name, c.subtitle].filter(Boolean)]),
+].filter(([, ls]) => ls.some(l => TAG.test(l)));
+if (tagged.length) {
+  console.error('! ' + tagged.length + ' card(s) still carry an untranslated markup tag, e.g.');
+  tagged.slice(0, 3).forEach(([id, ls]) => console.error('    ' + id + ': ' + ls.find(l => TAG.test(l)).slice(0, 110)));
   process.exit(2);
 }
 
