@@ -7,7 +7,9 @@ abilities are data, never code. This file is the schema reference.
 
 1. Create `data/cards-<set>.js`: an IIFE that `Object.assign(SB.cards, {...})`.
 2. Add display names to a `data/names-*.js` file (NEVER inline in card data).
-3. Add art subject lines to `tools/art-prompts.json`; run `node tools/gen-art.mjs`.
+3. Add art subject lines to `tools/art-prompts.json`; run `node tools/gen-art.mjs`, then
+   `node tools/art-thumbs.mjs --only <ids> --sheet <name>` and QC the contact sheet
+   (never the full renders; `npm install` once for sharp, tools only, no build step).
 4. Add the script tag to **BOTH** `index.html` and `tests.html` (forget the second
    and tests silently miss the set).
 5. Register decks in `data/decks.js` and deck names in the names files.
