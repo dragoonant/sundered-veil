@@ -61,5 +61,16 @@
   "shd-258": {"id":"shd-258","type":"unit","aspects":[],"traits":["tr25"],"cost":3,"power":3,"hp":3,"arena":"ground","abilities":[{"trigger":"onPlay","effects":[{"op":"experience","amount":1,"target":{"who":"any","what":"unit","trait":"tr25","notSelf":true,"optional":true}}]}]},
   "shd-261": {"id":"shd-261","type":"upgrade","aspects":[],"traits":["tr02","tr06"],"cost":1,"abilities":[{"trigger":"bounty","effects":[{"op":"experience","amount":1,"target":{"who":"any","what":"unit","optional":true},"saveTargetAs":"e1"},{"op":"experience","amount":1,"target":{"who":"any","what":"unit","optional":true,"notSavedAs":["e1"]}}]}]},
   "shd-262": {"id":"shd-262","type":"event","aspects":[],"traits":["tr22"],"cost":1,"abilities":[{"trigger":"onPlay","effects":[{"op":"defeatUpgrade"}]}]},
+  // ---- competitive-expansion skeletons (tools/pull-sets.mjs); abilities authored by hand ----
+  "shd-042": {"id":"shd-042","type":"unit","aspects":["vigilance","heroism"],"traits":["tr25","tr46","tr10"],"cost":3,"power":1,"hp":4,"arena":"space","keywords":[{"k":"sentinel"}],"abilities":[{"trigger":"defenderAura","grant":{"defenderPower":2}}]},
+  "shd-079": {"id":"shd-079","type":"event","aspects":["vigilance"],"traits":["tr39"],"cost":6,"abilities":[{"trigger":"onPlay","effects":[{"op":"defeat","target":{"who":"any","what":"unit"}}]}]},
+  "shd-098": {"id":"shd-098","type":"unit","aspects":["command","heroism"],"traits":["tr25","tr43"],"cost":3,"power":1,"hp":5,"arena":"ground","keywords":[{"k":"raid","n":2},{"k":"restore","n":2}]},
+  "shd-109": {"id":"shd-109","type":"event","aspects":["command","command"],"traits":["tr38"],"cost":14},
+  "shd-132": {"id":"shd-132","type":"event","aspects":["command"],"traits":["tr31"],"cost":7},
+  "shd-135": {"id":"shd-135","type":"unit","aspects":["aggression","villainy"],"traits":["tr11","tr46","tr10"],"unique":true,"cost":2,"power":3,"hp":2,"arena":"space","discardAction":true},
+  "shd-172": {"id":"shd-172","type":"unit","aspects":["aggression"],"traits":["tr07"],"cost":9,"power":10,"hp":10,"arena":"ground","keywords":[{"k":"overwhelm"}],"abilities":[{"trigger":"onOpponentPlaysCard","effects":[{"op":"binaryChoice","chooser":"self","a":{"effects":[{"op":"damage","amount":0,"target":{"who":"enemy","what":"unitOrBase","arena":"ground"},"amountRef":"playedCardCost"}]},"b":{"effects":[]}}]}]},
+  "shd-194": {"id":"shd-194","type":"event","aspects":["cunning","villainy"],"traits":["tr39"],"cost":3,"abilities":[{"trigger":"onPlay","effects":[{"op":"searchDeck","depth":7,"filter":{"type":"unit","trait":"tr46"},"playIt":true,"playDiscount":5,"entersReady":true,"returnAtRegroup":true}]}]},
+  "shd-248": {"id":"shd-248","type":"unit","aspects":["heroism"],"traits":["tr13","tr05"],"unique":true,"cost":3,"power":2,"hp":5,"arena":"ground","keywords":[{"k":"smuggle","cost":4,"aspects":["heroism"]}],"staticFlags":["grantSmuggle"]},
+
   });
 })(window.SB = window.SB || {});

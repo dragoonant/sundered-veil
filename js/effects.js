@@ -107,6 +107,8 @@
           const store = SB.efx(state, ctx);
           if (names.some(function (n) { const t = store[n]; return t && t.uid === u.uid; })) return;
         }
+        // Selector keys added by js/ops2.js.
+        if (SB.extraSelector && !SB.extraSelector(state, controller, sel, ctx, u)) return;
         out.push({ kind: 'unit', uid: u.uid });
       });
     }
@@ -254,6 +256,7 @@
     // cloned apart by apply(), so shared data cannot live on ctx itself).
     ctx = ctx || {};
     if (ctx.inv == null) { ctx.inv = state.nextUid++; }
+    if (ctx.controller == null) ctx.controller = controller; // who is dealing the damage, for observers
     const items = effects.map(function (op) {
       return { step: 'effect', controller: controller, op: op, ctx: ctx };
     });
@@ -336,6 +339,10 @@
       const t = store[m[1]];
       const u = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
       return u ? SB.unitPower(state, u) : 0;
+    }
+    if (SB.extraAmounts) {
+      const v = SB.extraAmounts(state, item, target, op.amountRef);
+      if (v !== undefined) return v;
     }
     throw new Error('unknown amountRef ' + op.amountRef);
   };
@@ -448,7 +455,8 @@
       case 'controlLeaderUnit':
         return SB.allUnits(state, controller).some(function (u) {
           return SB.card(u.cardId).type === 'leader' ||
-            u.upgrades.some(function (inst) { return !!inst.leaderPilot; });
+            u.upgrades.some(function (inst) { return !!inst.leaderPilot; }) ||
+            (SB.bearerCountsAsLeader && SB.bearerCountsAsLeader(u));
         });
       case 'defenderExhausted': {
         const t = ctx.attackTarget;
@@ -531,7 +539,10 @@
       }
       case 'controlMoreUnitsThanOpponent':
         return SB.allUnits(state, controller).length > SB.allUnits(state, SB.other(controller)).length;
-      default: throw new Error('unknown condition ' + cond.if);
+      default:
+        // Vocabulary added by js/ops2.js (competitive expansion).
+        if (SB.extraConditions && SB.extraConditions[cond.if]) return !!SB.extraConditions[cond.if](state, controller, cond, ctx || {});
+        throw new Error('unknown condition ' + cond.if);
     }
   };
 

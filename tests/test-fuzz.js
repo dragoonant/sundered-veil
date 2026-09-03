@@ -36,17 +36,23 @@
   // Deck-matrix fuzz over the real deck registry: every deck vs every other, both
   // seats. With only fixtures loaded this covers the fixtures; when the 13 real
   // decks land this automatically becomes the full matrix + crude balance readout.
+  // The competitive group (data/decks.js, group:'competitive') is 20 decks on top of the
+  // 16 precons; a full matrix over all of them is ~1,400 games and blew the runner's
+  // budget. Precons keep the full matrix; each competitive deck plays a fixed trio of
+  // precons from both seats, which still exercises every card in it.
   T.add('fuzz: deck matrix, every registered deck both seats', function () {
-    const ids = Object.keys(SB.decks);
+    const all = Object.keys(SB.decks);
+    const core = all.filter(function (d) { return SB.decks[d].group !== 'competitive'; });
+    const comp = all.filter(function (d) { return SB.decks[d].group === 'competitive'; });
+    const sparring = core.filter(function (d) { return d.indexOf('fixture') < 0; }).slice(0, 3);
     const wins = {};
-    ids.forEach(function (a) {
-      ids.forEach(function (b) {
-        if (a === b) return;
-        const f = SB.randomGame(a, b, 'mx|' + a + '|' + b);
-        const w = f.winner === 0 ? a : f.winner === 1 ? b : 'draw';
-        wins[w] = (wins[w] || 0) + 1;
-      });
-    });
+    function play(a, b) {
+      const f = SB.randomGame(a, b, 'mx|' + a + '|' + b);
+      const w = f.winner === 0 ? a : f.winner === 1 ? b : 'draw';
+      wins[w] = (wins[w] || 0) + 1;
+    }
+    core.forEach(function (a) { core.forEach(function (b) { if (a !== b) play(a, b); }); });
+    comp.forEach(function (c) { sparring.forEach(function (p) { play(c, p); play(p, c); }); });
     // No assertion on balance — this is a smoke pass + readout hook.
     T.ok(true, JSON.stringify(wins));
   });

@@ -207,7 +207,7 @@
   // silently makes a whole class of cards unplayable as designed, and nothing else in
   // the suite would notice — so the rule is asserted here against the real card data.
   T.add('upgrade: only upgrades printed "friendly" refuse an enemy bearer', function () {
-    const FRIENDLY = ['lof-091', 'lof-140', 'lof-201', 'sec-256', 'shd-124', 'shd-251'];
+    const FRIENDLY = ['lof-091', 'lof-140', 'lof-201', 'sec-256', 'shd-124', 'shd-251', 'sec-069'];
     const upgrades = Object.keys(SB.cards).filter(function (id) {
       return SB.cards[id].type === 'upgrade' && !/^fx-/.test(id);
     });

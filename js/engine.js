@@ -64,6 +64,8 @@
     // Play cards from hand.
     p.hand.forEach(function (inst, i) {
       const card = SB.card(inst.cardId);
+      // "Name a card" blocks (js/ops2.js): the opponent cannot play the named card.
+      if (SB.nameBlocked && SB.nameBlocked(state, me, inst.cardId)) return;
       let cost = SB.cardCost(state, me, inst.cardId);
       const exKw = (card.keywords || []).find(function (k) { return k.k === 'exploit'; });
       if (exKw) {
@@ -114,7 +116,7 @@
             if (f.notTrait && traits.indexOf(f.notTrait) >= 0) return;
             if (f.trait && traits.indexOf(f.trait) < 0) return;
           }
-          if (card.costModAttach && card.costModAttach.cards.indexOf(u.cardId) >= 0) {
+          if (card.costModAttach && attachDiscountApplies(card.costModAttach, u)) {
             const c2 = Math.max(0, SB.cardCost(state, me, inst.cardId) + card.costModAttach.delta);
             if (c2 > SB.readyResources(state, me)) return;
           }
@@ -164,14 +166,29 @@
     }
 
     // Unit activated abilities (trigger:'action', cost = exhaust self + resources).
+    // The list includes abilities granted by upgrades and auras (SB.unitAllAbilities),
+    // indexed the same way apply() reads them.
     SB.allUnits(state, me).forEach(function (u) {
-      (SB.unitDef(u).abilities || []).forEach(function (ab, ai) {
+      unitAbilities(state, u).forEach(function (ab, ai) {
         if (ab.trigger !== 'action') return;
         if (u.exhausted && !ab.noExhaust) return;
         if (ab.oncePerRound && u.usedActionRound === state.round) return;
         if ((ab.cost || 0) > SB.readyResources(state, me)) return;
+        if (ab.gate && !SB.checkCondition(state, me, ab.gate, { sourceUid: u.uid })) return;
         acts.push({ type: 'unitAction', player: me, uid: u.uid, abilityIndex: ai });
       });
+    });
+
+    // A card in the discard pile with a discard action (shd-135 style) may be played
+    // from there during the phase it was discarded.
+    p.discard.forEach(function (inst, i) {
+      const c = SB.card(inst.cardId);
+      if (!c.discardAction) return;
+      if ((p.discardedThisPhase || []).indexOf(inst.uid) < 0) return;
+      if (c.type !== 'unit' && c.type !== 'event') return;
+      if (SB.cardCost(state, me, inst.cardId) > SB.readyResources(state, me)) return;
+      if (c.type === 'unit' && c.unique && SB.allUnits(state, me).some(function (u) { return u.cardId === inst.cardId; })) return;
+      acts.push({ type: 'playDiscardAction', player: me, index: i, cardId: inst.cardId });
     });
 
     // Smuggle: a face-down resource with the smuggle keyword may be played for its
@@ -179,7 +196,7 @@
     p.resources.forEach(function (r, ri) {
       const card = SB.cards[r.instance.cardId];
       if (!card) return;
-      const sm = (card.keywords || []).find(function (k) { return k.k === 'smuggle'; });
+      const sm = (card.keywords || []).find(function (k) { return k.k === 'smuggle'; }) || grantedSmuggle(state, me, card);
       if (!sm) return;
       const cost = SB.smuggleCost(state, me, card, sm);
       if (cost > SB.readyResources(state, me)) return;
@@ -204,6 +221,25 @@
     return (SB.unitDef(unit).abilities || []).some(function (a) { return a.trigger === trigger; });
   }
   function unitHasKeyword(state, u, k) { return SB.hasKeyword(state, u, k); }
+  function unitAbilities(state, u) {
+    return SB.unitAllAbilities ? SB.unitAllAbilities(state, u) : (SB.unitDef(u).abilities || []);
+  }
+  // A unit with the grantSmuggle static (shd-248 style) lets every friendly resource
+  // smuggle for its printed cost plus 2 and its own aspect icons (units and events).
+  function grantedSmuggle(state, me, card) {
+    if (card.type !== 'unit' && card.type !== 'event') return null;
+    if (!SB.allUnits(state, me).some(function (u) { return (SB.unitDef(u).staticFlags || []).indexOf('grantSmuggle') >= 0; })) return null;
+    return { k: 'smuggle', cost: (card.cost || 0) + 2, aspects: card.aspects || [] };
+  }
+  // costModAttach: {cards:[ids]} names specific bearers; {uniqueOnly:true} any champion.
+  function attachDiscountApplies(m, u) {
+    if ((m.cards || []).indexOf(u.cardId) >= 0) return true;
+    return !!m.uniqueOnly && !!SB.card(u.cardId).unique;
+  }
+  function noteAttack(state, attacker) {
+    state.attackedThisPhase = state.attackedThisPhase || [];
+    state.attackedThisPhase.push({ uid: attacker.uid, cardId: attacker.cardId, owner: attacker.owner, traits: SB.unitTraits(state, attacker) });
+  }
 
   // ---- apply --------------------------------------------------------------
 
@@ -239,8 +275,9 @@
         const rand = SB.rng(state.seed + '|mulligan|' + item.player);
         const all = p.deck.concat(p.hand);
         const reshuffled = SB.shuffled(all, rand);
-        p.hand = reshuffled.slice(0, 6);
-        p.deck = reshuffled.slice(6);
+        const hs = 6 + (SB.card(p.base.cardId).startingHandDelta || 0);
+        p.hand = reshuffled.slice(0, hs);
+        p.deck = reshuffled.slice(hs);
         SB.log(state, { type: 'mulligan', player: item.player });
       }
       return;
@@ -304,6 +341,9 @@
       state.locked[me] = true;
       state.passed[me] = true;
       SB.log(state, { type: 'claimInitiative', player: me, sound: 'claim' });
+      // "When you take the initiative" observers (leader side and units).
+      fireLeaderTrigger(state, me, 'onTakeInitiative', {});
+      SB.allUnits(state, me).forEach(function (u) { SB.fireTriggers(state, 'onTakeInitiative', u, { sourceUid: u.uid }); });
       advanceTurn(state);
       return;
     }
@@ -321,11 +361,15 @@
       p.baseEpicUsed = true;
       SB.log(state, { type: 'baseEpic', player: me, sound: 'ability' });
       SB.queueEffects(state, me, bc.epicAbility.effects, { cardId: p.base.cardId });
+    } else if (action.type === 'playDiscardAction') {
+      const inst = p.discard[action.index];
+      expect(inst && inst.cardId === action.cardId && SB.card(inst.cardId).discardAction, action);
+      playCard(state, me, { fromDiscard: action.index, cardId: action.cardId });
     } else if (action.type === 'smuggle') {
       const r = p.resources[action.resourceIndex];
       expect(r && r.instance.cardId === action.cardId, action);
       const card = SB.card(action.cardId);
-      const sm = (card.keywords || []).find(function (k) { return k.k === 'smuggle'; });
+      const sm = (card.keywords || []).find(function (k) { return k.k === 'smuggle'; }) || grantedSmuggle(state, me, card);
       const cost = SB.smuggleCost(state, me, card, sm);
       expect(cost <= SB.readyResources(state, me) && p.deck.length > 0, action);
       payResources(state, me, cost);
@@ -393,9 +437,9 @@
       SB.queueEffects(state, me, ab.effects, { cardId: p.leader.cardId, condition: ab.condition });
     } else if (action.type === 'unitAction') {
       const u = SB.findUnit(state, action.uid);
-      expect(u && u.owner === me && !u.exhausted, action);
-      const ab = SB.unitDef(u).abilities[action.abilityIndex];
-      expect(ab && ab.trigger === 'action', action);
+      expect(u && u.owner === me, action);
+      const ab = unitAbilities(state, u)[action.abilityIndex];
+      expect(ab && ab.trigger === 'action' && (!u.exhausted || ab.noExhaust), action);
       expect(!(ab.oncePerRound && u.usedActionRound === state.round), action);
       payResources(state, me, ab.cost || 0);
       if (ab.oncePerRound) u.usedActionRound = state.round;
@@ -428,7 +472,10 @@
   function playCard(state, me, action, mods) {
     mods = mods || {};
     const p = state.players[me];
-    const inst = action.fromDeckTop ? p.deck[0]
+    // fromInst: the caller already lifted the instance out of its pile (a resource
+    // or the opponent's discard pile, see js/ops2.js playHandPick).
+    const inst = action.fromInst ? action.fromInst
+      : action.fromDeckTop ? p.deck[0]
       : action.fromDeckIndex != null ? p.deck[action.fromDeckIndex]
       : action.fromDiscard != null ? p.discard[action.fromDiscard]
       : p.hand[action.handIndex];
@@ -442,7 +489,7 @@
     if (action.exploit) cost = Math.max(0, cost - 2 * action.exploit);
     if (action.attachTo && card.costModAttach) {
       const tgt = SB.findUnit(state, action.attachTo);
-      if (tgt && card.costModAttach.cards.indexOf(tgt.cardId) >= 0) {
+      if (tgt && attachDiscountApplies(card.costModAttach, tgt)) {
         cost = Math.max(0, cost + card.costModAttach.delta);
       }
     }
@@ -459,13 +506,19 @@
     }
     expect(cost <= SB.readyResources(state, me), action);
     payResources(state, me, cost);
-    if (action.fromDeckTop) p.deck.shift();
+    if (SB.consumeStaticDiscounts) SB.consumeStaticDiscounts(state, me, inst.cardId);
+    if (action.fromInst) { /* already lifted out of its pile */ }
+    else if (action.fromDeckTop) p.deck.shift();
     else if (action.fromDeckIndex != null) p.deck.splice(action.fromDeckIndex, 1);
     else if (action.fromDiscard != null) p.discard.splice(action.fromDiscard, 1);
     else p.hand.splice(action.handIndex, 1);
     p.playedThisPhase = p.playedThisPhase || [];
     p.playedThisPhase.push(inst.cardId);
     SB.log(state, { type: 'playCard', player: me, cardId: inst.cardId, cost: cost, sound: 'play' });
+    // "When an opponent plays a card" observers on the other side's units.
+    SB.allUnits(state, SB.other(me)).forEach(function (obs) {
+      SB.fireTriggers(state, 'onOpponentPlaysCard', obs, { sourceUid: obs.uid, playedCardId: inst.cardId, playedCardCost: card.cost || 0 });
+    });
 
     if (action.asPilot) {
       const bearer = SB.findUnit(state, action.attachTo);
@@ -483,8 +536,19 @@
       if (SB.card(inst.cardId).staticFlags &&
           SB.card(inst.cardId).staticFlags.indexOf('defeatAtRegroup') >= 0) unit.defeatAtRegroup = true;
       if (mods.entersReady) unit.exhausted = false;
-      if (card.entersReadyIf && SB.checkCondition(state, me, card.entersReadyIf, {})) unit.exhausted = false;
+      if (card.entersReadyIf && SB.checkCondition(state, me, card.entersReadyIf, { sourceUid: unit.uid })) unit.exhausted = false;
       if (mods.defeatAtRegroup) unit.defeatAtRegroup = true;
+      if (mods.returnAtRegroup) unit.commandeered = { originalOwner: me };
+      // "The next unit you play this phase (matching) enters play ready" grants.
+      if (p.entersReadyGrants && p.entersReadyGrants.length) {
+        const gi = p.entersReadyGrants.findIndex(function (g) {
+          const f = g.filter || {};
+          if (f.maxPower != null && (card.power || 0) > f.maxPower) return false;
+          if (f.trait && (card.traits || []).indexOf(f.trait) < 0) return false;
+          return true;
+        });
+        if (gi >= 0) { p.entersReadyGrants.splice(gi, 1); unit.exhausted = false; }
+      }
       state[card.arena].push(unit);
       if (SB.hasKeyword(state, unit, 'shielded')) {
         unit.shields += 1;
@@ -506,11 +570,13 @@
           state.queue.unshift({ step: 'exploitPick', player: me, forUid: unit.uid });
         }
       }
-      // "When you play another unit" observers on other friendly units.
+      // "When you play another unit" observers on other friendly units, and on the
+      // undeployed leader.
       SB.allUnits(state, me).forEach(function (obs) {
         if (obs.uid === unit.uid) return;
         SB.fireTriggers(state, 'onUnitPlayed', obs, { sourceUid: obs.uid, playedUid: unit.uid, playedCardId: unit.cardId });
       });
+      fireLeaderTrigger(state, me, 'onUnitPlayed', { playedUid: unit.uid, playedCardId: unit.cardId });
     } else if (card.type === 'event') {
       p.discard.push(inst);
       p.eventsThisRound = (p.eventsThisRound || 0) + 1;
@@ -564,7 +630,7 @@
   // grant = {power?, powerPerSelfDamage?, keywords?:[{k}]} — condition kinds:
   // 'defenderDamaged'. Keep SB.cardText's combat describers in step with this.
   function combatMods(state, attacker, defender) {
-    const mods = { power: 0, overwhelm: false, firstStrike: false };
+    const mods = { power: 0, overwhelm: false, firstStrike: false, defenderFirst: false };
     // combatAura: another unit's grant applying to attackers matching its scope
     // (only while attacking an enemy unit).
     if (defender) {
@@ -581,13 +647,17 @@
     }
     (SB.unitDef(attacker).abilities || []).forEach(function (ab) {
       if (ab.trigger !== 'combatConstant') return;
-      if (ab.condition && ab.condition.if === 'defenderDamaged' && (!defender || defender.damage === 0)) return;
-      if (ab.condition && ab.condition.if === 'defenderExhaustedOld' &&
-          (!defender || !defender.exhausted || defender.enteredRound === state.round)) return;
+      if (ab.condition) {
+        const ci = ab.condition.if;
+        if (ci === 'defenderDamaged') { if (!defender || defender.damage === 0) return; }
+        else if (ci === 'defenderExhaustedOld') { if (!defender || !defender.exhausted || defender.enteredRound === state.round) return; }
+        else if (!SB.checkCondition(state, attacker.owner, ab.condition, { sourceUid: attacker.uid })) return;
+      }
       const g = ab.grant || {};
       mods.power += g.power || 0;
       if (g.powerPerSelfDamage) mods.power += g.powerPerSelfDamage * attacker.damage;
       if (g.firstStrike) mods.firstStrike = true;
+      if (g.defenderFirst) mods.defenderFirst = true;
       (g.keywords || []).forEach(function (kw) { if (kw.k === 'overwhelm') mods.overwhelm = true; });
     });
     return mods;
@@ -617,6 +687,10 @@
       if (basePower > 0) {
         state.baseDamagersThisPhase = state.baseDamagersThisPhase || [];
         state.baseDamagersThisPhase.push(attacker.uid);
+        // "When your base is dealt combat damage" observers on the defending side.
+        const victim = item.target.player;
+        SB.allUnits(state, victim).forEach(function (obs) { SB.fireTriggers(state, 'onOwnBaseCombatDamaged', obs, { sourceUid: obs.uid }); });
+        fireLeaderTrigger(state, victim, 'onOwnBaseCombatDamaged', {});
       }
       return;
     }
@@ -624,12 +698,15 @@
     if (!defender) return; // defender gone — no damage either way
     const mods = combatMods(state, attacker, defender);
     power += mods.power;
-    // Defender-side aura: "while this unit is defending, the attacker gets X".
+    // Defender-side aura: "while this unit is defending, the attacker gets X" and
+    // "this unit gets +X while defending".
+    let defBonus = 0;
     (SB.unitDef(defender).abilities || []).forEach(function (ab) {
       if (ab.trigger !== 'defenderAura') return;
       power = Math.max(0, power + ((ab.grant || {}).attackerPower || 0));
+      defBonus += (ab.grant || {}).defenderPower || 0;
     });
-    const defPower = Math.max(0, SB.unitPower(state, defender) + (item.defenderPowerDelta || 0));
+    const defPower = Math.max(0, SB.unitPower(state, defender) + (item.defenderPowerDelta || 0) + defBonus);
     const overwhelm = SB.hasKeyword(state, attacker, 'overwhelm') || mods.overwhelm;
     const sab = SB.hasKeyword(state, attacker, 'saboteur');
     const defHpLeft = SB.unitRemainingHp(state, defender);
@@ -639,7 +716,13 @@
       SB.log(state, { type: 'shieldsSabotaged', uid: defender.uid, sound: 'shield' });
     }
     const alwaysFirst = (SB.unitDef(attacker).staticFlags || []).indexOf('firstStrike') >= 0 || mods.firstStrike;
-    if (item.firstStrike || alwaysFirst) {
+    const defenderFirst = mods.defenderFirst || !!attacker.defenderFirstNext;
+    delete attacker.defenderFirstNext;
+    if (defenderFirst) {
+      // The attacker lets the defender strike first (law-086 style).
+      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
+      if (SB.findUnit(state, attacker.uid)) SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
+    } else if (item.firstStrike || alwaysFirst) {
       // Attacker deals combat damage first; defender only retaliates if it lives.
       SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
       if (SB.findUnit(state, defender.uid)) {
@@ -673,6 +756,7 @@
     if (mods.ready) attacker.exhausted = false;
     attacker.exhausted = true;
     SB.log(state, { type: 'attackDeclared', attacker: attacker.uid, target: target, sound: 'attack' });
+    noteAttack(state, attacker);
     state.queue.push({ step: 'combatDamage', attackerUid: attacker.uid, target: target, player: attacker.owner,
       bonusPower: mods.bonusPower || 0, firstStrike: !!mods.firstStrike, bonusVsUnitsOnly: !!mods.bonusVsUnitsOnly });
     SB.fireTriggers(state, 'onAttack', attacker, { sourceUid: attacker.uid, attackTarget: target });
@@ -887,6 +971,7 @@
     if (!unit || !target) return;
     SB.log(state, { type: 'ambush', uid: unit.uid, sound: 'attack' });
     unit.exhausted = true;
+    noteAttack(state, unit);
     state.queue.unshift({ step: 'combatDamage', attackerUid: unit.uid, target: target, player: unit.owner });
     SB.fireTriggers(state, 'onAttack', unit, { sourceUid: unit.uid, attackTarget: target });
   };
@@ -903,8 +988,12 @@
     state.efx = {};
     state.efxExploit = {};
     state.baseDamagersThisPhase = [];
+    state.attackedThisPhase = [];
+    state.leftPlayThisPhase = 0;
+    state.lastWhenDefeated = null;
     state.players.forEach(function (p) {
       p.playedThisPhase = []; p.eventsThisRound = 0; p.discounts = []; p.plotDiscount = 0;
+      p.discardedThisPhase = []; p.entersReadyGrants = [];
       delete p.echoNextOnPlay;
     });
     SB.log(state, { type: 'actionPhase', round: state.round });
@@ -930,6 +1019,8 @@
   function startRegroup(state) {
     state.phase = 'regroup';
     SB.log(state, { type: 'regroup', round: state.round });
+    // Units captured by a base are rescued at the start of the regroup phase.
+    if (SB.releaseBaseCaptives) SB.releaseBaseCaptives(state);
     // "When the regroup phase starts" unit triggers.
     SB.allUnits(state).slice().forEach(function (u) {
       SB.fireTriggers(state, 'onRegroup', u, { sourceUid: u.uid });
@@ -1006,8 +1097,11 @@
       }
       u.temp = { power: 0, hp: 0 };
       delete u.tempKeywords;
+      delete u.tempKeywordNs;
       delete u.tempAbilities;
       delete u.triggerUsedRound;
+      delete u.abilitiesSuppressed;
+      delete u.defenderFirstNext;
     });
     // A unit kept alive past lethal by a this-round effect dies when it expires.
     SB.allUnits(state).slice().forEach(function (u) {
@@ -1020,4 +1114,16 @@
     state.round += 1;
     startActionPhase(state);
   }
+  // Who must act on the current state. A queue step names the player whose cards
+  // the step touches in `player`; when someone else makes the choice (an opponent
+  // picking a card from a revealed hand) the chooser is `forcedBy` and acts instead.
+  SB.whoActs = function (state) {
+    if (state.queue.length > 0) {
+      const item = state.queue[0];
+      if (item.forcedBy != null) return item.forcedBy;
+      if (item.player != null) return item.player;
+      if (item.controller != null) return item.controller;
+    }
+    return state.active;
+  };
 })(window.SB = window.SB || {});

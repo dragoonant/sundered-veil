@@ -63,8 +63,9 @@
         leader: { cardId: deck.leader, deployed: false, exhausted: false, damage: 0, uid: null,
           defeated: false },
         base: { cardId: deck.base, damage: 0 },
-        hand: shuffledDeck.slice(0, 6),
-        deck: shuffledDeck.slice(6),
+        // Some bases change the opening hand (jtl-021 style): 6 plus the base's delta.
+        hand: shuffledDeck.slice(0, 6 + (SB.card(deck.base).startingHandDelta || 0)),
+        deck: shuffledDeck.slice(6 + (SB.card(deck.base).startingHandDelta || 0)),
         discard: [],
         resources: [],
         resourcedThisRound: false, mulliganed: false,

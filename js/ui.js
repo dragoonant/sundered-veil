@@ -49,14 +49,7 @@
     UI.render();
   };
 
-  function whoActs(state) {
-    if (state.queue.length > 0) {
-      const item = state.queue[0];
-      if (item.player != null) return item.player;
-      if (item.controller != null) return item.controller;
-    }
-    return state.active;
-  }
+  function whoActs(state) { return SB.whoActs(state); }
 
   UI.maybeAI = function () {
     const s = UI.state;
@@ -621,7 +614,8 @@
     switch (a.type) {
       case 'mulligan': return a.keep ? SB.names.ui.keep : SB.names.ui.mulligan;
       case 'discardCard': return 'Discard: ' + cardName(s.players[a.targetPlayer != null ? a.targetPlayer : a.player].hand[a.handIndex].cardId);
-      case 'playHandCard': return a.handIndex === -1 ? SB.names.ui.decline : 'Play: ' + cardName(a.cardId);
+      case 'playHandCard': return a.handIndex === -1 ? SB.names.ui.decline
+        : 'Play: ' + cardName(a.cardId) + (a.attachTo != null ? ' on ' + unitName(s, a.attachTo) : '');
       case 'searchTake': return a.deckIndex === -1 ? SB.names.ui.decline : 'Take: ' + cardName(s.players[a.player].deck[a.deckIndex].cardId);
       case 'binary': {
         // Never "Option 1 / Option 2": say what each branch actually does.
@@ -665,6 +659,20 @@
       case 'defeatUpgrade': return 'Defeat upgrade on ' + unitName(s, a.uid);
       case 'auctionPick': return 'Reveal ' + (a.who === UI.humanSeat ? 'your' : 'their') + ' deck';
       case 'auctionPlay': return a.play ? 'Play it free' : SB.names.ui.decline;
+      // competitive expansion steps (js/ops2.js)
+      case 'advantageTo': return a.uid == null ? 'Stop' : 'Advantage to: ' + unitName(s, a.uid);
+      case 'pickAspect': return 'Choose ' + (SB.names.aspects[a.aspect] || a.aspect);
+      case 'pickArena': return 'Choose the ' + a.arena + ' arena';
+      case 'handToDeck': return (a.where === 'top' ? 'Top: ' : 'Bottom: ') + cardName(s.players[a.player].hand[a.handIndex].cardId);
+      case 'selfBurn': return a.amount === 0 ? 'No damage' : 'Take ' + a.amount + ' on the base';
+      case 'budgetDefeat': return a.uid == null ? 'Stop' : 'Defeat: ' + unitName(s, a.uid);
+      case 'pilotFromUnit': return a.uid == null ? SB.names.ui.decline : 'Board: ' + unitName(s, a.uid);
+      case 'pilotFromUpgrade': return 'Move the pilot from ' + unitName(s, a.uid);
+      case 'tokenTake': return a.uid == null ? SB.names.ui.decline : 'Take a ' + a.kind + ' token from ' + unitName(s, a.uid);
+      case 'tokenGive': return 'Give it to ' + unitName(s, a.uid);
+      case 'creditSpend': return a.who == null ? SB.names.ui.decline : (a.who === a.player ? 'Spend your credit' : 'Spend their credit');
+      case 'nameCard': return 'Name: ' + cardName(a.cardId);
+      case 'playDiscardAction': return 'Play from discard: ' + cardName(a.cardId);
       default: return a.type;
     }
   }

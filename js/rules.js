@@ -12,7 +12,8 @@
   // The card definition governing a unit in an arena. Deployed leaders use the
   // deployedSide block; everything else uses the card root.
   SB.unitDef = function (unit) {
-    const c = SB.card(unit.cardId);
+    // A clone (unit.copyOf) plays as the copied card's definition.
+    const c = SB.card(unit.copyOf || unit.cardId);
     return c.type === 'leader' ? c.deployedSide : c;
   };
 

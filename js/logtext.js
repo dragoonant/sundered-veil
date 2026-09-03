@@ -169,12 +169,29 @@
     bonded: function (l, s) { return name(l, s) + ' bonded with ' + nameOf(l.to, s, null, l.toCardId) + '.'; },
     supported: function (l, s) { return nameOf(l.by, s, null, l.byCardId) + ' lent its support to ' + name(l, s) + '.'; },
     jailed: function (l, s) { return name(l, s) + ' was locked down by ' + nameOf(l.by, s, null, l.byCardId) + '.'; },
-    captured: function (l, s) { return name(l, s) + ' was captured by ' + nameOf(l.by, s, null, l.byCardId) + '!'; },
+    captured: function (l, s) {
+      if (l.by == null) return name(l, s) + ' was captured and held at the base!';
+      return name(l, s) + ' was captured by ' + nameOf(l.by, s, null, l.byCardId) + '!';
+    },
     controlTaken: function (l, s) { return them(l.by) + ' seized control of ' + name(l, s) + '!'; },
     controlExchanged: function (l, s) {
       return nameOf(l.a, s, null, l.aCardId) + ' and ' + nameOf(l.b, s, null, l.bCardId) + ' changed sides.';
     },
     binaryChosen: function (l) { return player(l.player) + ' chose an option.'; },
+
+    // --- competitive expansion (js/ops2.js) ---
+    abilitiesSuppressed: function (l, s) { return name(l, s) + ' lost all its abilities.'; },
+    readyGrantArmed: function (l) { return possessive(l.player) + ' next matching unit will arrive ready.'; },
+    abilityBorrowed: function (l, s) { return 'The last-words ability of ' + name(l, s) + ' was used.'; },
+    abilityRepeated: function (l) { return 'The last-words ability of ' + cardName(l.cardId) + ' was used again.'; },
+    copiesPurged: function (l) { return player(l.player) + ' lost ' + n(l.amount, 'copy', 'copies') + ' of ' + cardName(l.cardId) + ' from hand and deck.'; },
+    aspectChosen: function (l) { return player(l.player) + ' chose ' + (SB.names.aspects[l.aspect] || l.aspect) + '.'; },
+    arenaChosen: function (l) { return player(l.player) + ' chose the ' + l.arena + ' arena.'; },
+    toppedCard: function (l) { return player(l.player) + ' put a card on top of the deck.'; },
+    ejected: function (l, s) { return name(l, s) + ' ejected into the ground arena.'; },
+    cardNamed: function (l, s) { return name(l, s) + ' named ' + cardName(l.cardId) + '.'; },
+    cloned: function (l, s) { return name(l, s) + ' took the form of ' + cardName(l.cardId) + '.'; },
+    damagePrevented: function (l, s) { return 'Damage to ' + name(l, s) + ' was prevented.'; },
 
     // --- the two lines that keep a paid-for card honest (§4) ---
     autoTarget: function (l, s) {
