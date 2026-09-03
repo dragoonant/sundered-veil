@@ -49,14 +49,7 @@
     UI.render();
   };
 
-  function whoActs(state) {
-    if (state.queue.length > 0) {
-      const item = state.queue[0];
-      if (item.player != null) return item.player;
-      if (item.controller != null) return item.controller;
-    }
-    return state.active;
-  }
+  function whoActs(state) { return SB.whoActs(state); }
 
   UI.maybeAI = function () {
     const s = UI.state;

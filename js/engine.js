@@ -1114,4 +1114,16 @@
     state.round += 1;
     startActionPhase(state);
   }
+  // Who must act on the current state. A queue step names the player whose cards
+  // the step touches in `player`; when someone else makes the choice (an opponent
+  // picking a card from a revealed hand) the chooser is `forcedBy` and acts instead.
+  SB.whoActs = function (state) {
+    if (state.queue.length > 0) {
+      const item = state.queue[0];
+      if (item.forcedBy != null) return item.forcedBy;
+      if (item.player != null) return item.player;
+      if (item.controller != null) return item.controller;
+    }
+    return state.active;
+  };
 })(window.SB = window.SB || {});

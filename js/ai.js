@@ -124,9 +124,7 @@
   }
 
   AI.chooseAction = function (state, difficulty) {
-    const me = state.queue.length > 0
-      ? (state.queue[0].player != null ? state.queue[0].player : state.queue[0].controller)
-      : state.active;
+    const me = SB.whoActs(state);
     const acts = SB.legalActions(state);
     SB.assert(acts.length > 0, 'AI asked to act with no legal actions');
     if (acts.length === 1) return acts[0];

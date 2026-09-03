@@ -221,6 +221,18 @@ const decks = {};
     decks[deckId] = product + (kind === 's' ? ' Two-Player Starter' : ' Spotlight Deck') +
       ' – ' + leader.name;
   }
+  // Tournament lists (deck-cNN) have no product name; a list is known by its leader
+  // and base, so name it that way from the same card database.
+  for (const m of src.matchAll(/"(deck-c[0-9]+)":\s*\{"leader":"([a-z0-9]{3,4}-\d{3})","base":"([a-z0-9]{3,4}-\d{3})"/g)) {
+    const [, deckId, leaderId, baseId] = m;
+    if (!cards[leaderId] || !cards[baseId]) continue;
+    const L = cards[leaderId];
+    decks[deckId] = L.name + (L.subtitle ? ", " + L.subtitle : "") + " – " + cards[baseId].name;
+  }
+  // Two lists can share leader and base; keep them apart by list number.
+  Object.keys(decks).filter(k => k.startsWith("deck-c")).forEach(k => {
+    if (Object.values(decks).filter(v => v === decks[k]).length > 1) decks[k] += " (" + k.slice(-2) + ")";
+  });
   const dupes = Object.values(decks).filter((v, i, a) => a.indexOf(v) !== i);
   if (dupes.length) { console.error('! deck names are not unique: ' + dupes.join(', ')); process.exit(2); }
 }

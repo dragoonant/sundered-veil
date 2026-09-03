@@ -267,4 +267,15 @@
     });
     T.ok(n > 1000, 'walked the lists (' + n + ' slots)');
   });
+  T.add("expansion: the opponent, not the hand owner, picks the card discarded by ash-220", function () {
+    let s = rich(T.game(), 1);
+    T.putInHand(s, 0, "sor-045");
+    s = play(s, 1, "ash-220");
+    T.eq(s.queue[0].step, "discardChoice", "the pick is pending");
+    T.eq(SB.whoActs(s), 1, "the player who played the card acts");
+    const acts = SB.legalActions(s);
+    T.ok(acts.length > 1 && acts.every(function (a) { return a.player === 1 && a.targetPlayer === 0; }), "every choice is the opponent picking from seat 0's hand");
+    s = SB.apply(s, acts[0]);
+    T.eq(s.queue.length && s.queue[0].step === "discardChoice" ? 1 : 0, 0, "the pick resolves");
+  });
 })(window.SB = window.SB || {});
