@@ -23,8 +23,14 @@ Lucasfilm Ltd., or The Walt Disney Company.
 A local, gitignored override layer (`data/source-local.js`, built by
 `tools/gen-source-names.mjs` from a scratch database dump) may substitute source-material
 display names and printed rules text on a developer machine, so implemented mechanics can
-be checked against the cards they were derived from. That file is never committed and is
-absent from any published build, which falls back to the original names above.
+be checked against the cards they were derived from. That file is absent from `main` and
+from any published build, which falls back to the original names above.
+
+**Exception — the `playtest` branch.** While this repository is private, the `playtest`
+branch commits `data/source-local.js` together with the generated `art/` and `sfx/`
+folders so the game runs from a phone clone without regenerating anything. That branch is
+a private convenience for the maintainer only. It never merges into `main`, and it must
+be deleted and purged from history before the repository is made public or shared.
 
 Maintenance rule: any behavior change that affects the claims above must update this file
 in the same commit.

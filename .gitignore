@@ -15,19 +15,16 @@ scratch/
 import-packets/
 
 # Local playtesting name/text override (tools/gen-source-names.mjs) — carries source
-# material display text; never commit, never deploy
-data/source-local.js
+# material display text. Ignored on every branch except playtest (see below).
 
 # OS noise
 Thumbs.db
 desktop.ini
 
-# Generated assets stay out of the repo (regenerate via tools/gen-art.mjs, tools/gen-sfx.mjs)
-# art/cardback.webp is the exception, for the same reason as its master above:
-# no prompt produces it, so without it a fresh clone has no card back at all.
-art/*
-!art/cardback.webp
-sfx/
+# PLAYTEST BRANCH ONLY: art/, sfx/ and data/source-local.js are committed here so a
+# phone clone (Working Copy) runs the full game. This branch never merges to main and
+# must be deleted (history purged) before the repo is ever made public. See NOTICE.md.
+art/thumbs/
 art-gen.log
 art-regen.log
 art-gen-212.log
