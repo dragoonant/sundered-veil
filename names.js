@@ -62,7 +62,7 @@
       titleHint: 'Click to continue',
       chooseDeck: 'Choose your legion', chooseDifficulty: 'Opponent skill',
       startGame: 'Start the battle',
-      difficulty: { easy: 'Easy', mid: 'Medium', hard: 'Hard' },
+      difficulty: { easy: 'Easy', mid: 'Medium', hard: 'Hard', competition: 'Competition' },
       // Deck picker groups and the card-pool format a tournament list was built for.
       deckGroups: { precon: 'Legion decks', competitive: 'Tournament lists' },
       format: { premier: 'Premier', eternal: 'Eternal' },

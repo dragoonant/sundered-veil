@@ -62,7 +62,7 @@
   }
   // Drive the leader action to the point where its target is chosen, and report it.
   function pingTarget(s) {
-    const act = SB.ai.chooseAction(s, 'hard');
+    const act = SB.ai.chooseAction(s, 'competition');
     if (act.type !== 'leaderAction') return { skipped: act.type };
     let r = SB.apply(s, act);
     let guard = 0;
@@ -70,7 +70,7 @@
       const acts = SB.legalActions(r);
       const head = r.queue[0];
       if (head.candidates) {
-        const pick = SB.ai.chooseAction(r, 'hard');
+        const pick = SB.ai.chooseAction(r, 'competition');
         const cand = head.candidates[pick.index];
         return { uid: cand && cand.uid };
       }
@@ -103,11 +103,45 @@
     // The term itself, independent of any one decision.
     const s = T.game('fixtureA', 'fixtureB', 'ai-locked-value');
     const u = T.putOnBoard(s, 0, 'lof-063');
-    const locked = SB.ai.evaluate(s, 0);
+    const locked = SB.ai.evaluate(s, 0, 'competition');
     const hot = JSON.parse(JSON.stringify(s));
     SB.findUnit(hot, u.uid).damage = 1;            // now it can attack
-    T.ok(SB.ai.evaluate(hot, 0) > locked,
+    T.ok(SB.ai.evaluate(hot, 0, 'competition') > locked,
       'a damaged 5/5 that can swing beats an untouched one that cannot');
+  });
+
+  // ---- what a position is made of besides bodies -----------------------------
+  T.add('ai: a unit that pays when it dies is cheaper to lose than one that does not', function () {
+    // fx-martyr and fx-grunt are both 2/2; only the martyr draws its owner a card when
+    // it is defeated. Losing it should cost less — that is what lets the AI make the
+    // trades a death-trigger deck is built on.
+    function costOfLosing(cardId) {
+      const s = T.game('fixtureA', 'fixtureB', 'ai-death-' + cardId);
+      const u = T.putOnBoard(s, 0, cardId);
+      const withIt = SB.ai.evaluate(s, 0, 'competition');
+      const without = JSON.parse(JSON.stringify(s));
+      const arena = SB.arenaOf(without, SB.findUnit(without, u.uid));
+      without[arena] = without[arena].filter(function (x) { return x.uid !== u.uid; });
+      return withIt - SB.ai.evaluate(without, 0, 'competition');
+    }
+    T.ok(costOfLosing('fx-martyr') < costOfLosing('fx-grunt'),
+      'the martyr is the cheaper of two 2/2s to lose');
+  });
+
+  T.add('ai: the force token and credits are worth something', function () {
+    const s = T.game('fixtureA', 'fixtureB', 'ai-currency');
+    const flat = SB.ai.evaluate(s, 0, 'competition');
+    const withForce = JSON.parse(JSON.stringify(s));
+    withForce.players[0].force = true;
+    T.ok(SB.ai.evaluate(withForce, 0, 'competition') > flat, 'holding the power token beats not holding it');
+    const withCredit = JSON.parse(JSON.stringify(s));
+    withCredit.players[0].credits = 1;
+    T.ok(SB.ai.evaluate(withCredit, 0, 'competition') > flat, 'a credit beats no credit');
+    // ...and a permanent resource is still worth more than a one-shot credit.
+    const withRes = JSON.parse(JSON.stringify(s));
+    T.giveResources(withRes, 0, 1);
+    T.ok(SB.ai.evaluate(withRes, 0, 'competition') > SB.ai.evaluate(withCredit, 0, 'competition'),
+      'a resource outvalues a credit');
   });
 
   T.add('ai: full game vs itself terminates with a winner (mid)', function () {

@@ -73,7 +73,7 @@
     diffRow.appendChild(el('span', 'title-field-label', SB.names.ui.chooseDifficulty));
     const diff = el('select', 'title-select');
     diff.id = 'difficulty-select';
-    ['easy', 'mid', 'hard'].forEach(function (k) {
+    ['easy', 'mid', 'hard', 'competition'].forEach(function (k) {
       const o = document.createElement('option');
       o.value = k; o.textContent = SB.names.ui.difficulty[k];
       if (k === 'mid') o.selected = true;

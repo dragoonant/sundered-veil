@@ -305,6 +305,51 @@ Both are missing terms in the evaluator, not missing deck knowledge. That is whe
 next Phase 1 pass goes: the six worse-than-random decks are 30% of the field, and the AI
 is actively throwing those games.
 
+## Competition difficulty — the profile split, and why the matrix cannot judge it
+
+A deck-vs-deck matrix cannot answer "did the AI get better". Every deck plays the same
+policy, so the mean winrate is 50% by construction and all the matrix shows is archetype
+bias moving around. Both Phase 1 measurements ran into this: the death-payoff/currency
+arm moved a dozen decks by several points each (Wyn's Foresight -9.3, Greeve's Favor
++6.6) with no way to read a verdict out of it.
+
+So the weights are now two profiles. easy/mid/hard share the BASE table — unchanged from
+before this work. `competition` is the same machine with the terms the base evaluator is
+blind to. That makes the real question directly measurable:
+
+```
+node tools/ai-balance.mjs --group competitive --difficulty competition --vs hard --seed g1
+```
+
+Each pairing is played twice with the seats swapped, so the result cannot be a seat
+advantage in disguise. **A term earns promotion into the base profile by winning that
+gauntlet.** Not by being sensible — this file records one that was sensible and measured
+backwards.
+
+Competition currently carries: `lockedPower` 0.5, `credit` 3, `force` 5,
+`deathPayoff` 0.5. Frequency in the 20 competitive lists, which is what decides whether
+a term can show up at all:
+
+```
+mechanic            cards in pool   decks running it   median copies
+whenDefeated              46             18/20               6
+force token                7              2/20               4
+credits                    6              2/20               1
+attackOnlyDamaged          1              1/20               2
+```
+
+Only `deathPayoff` can move a matrix. Currency is judged on deck-c07 and deck-c11
+specifically, both currently piloted worse than random.
+
+### Checked and NOT a defect: initiative timing
+
+The fingerprint (tools/ai-fingerprint.mjs, new) showed the AI ending its round by claiming
+initiative on 12.5% of its actions against random's 8.7%, which looked like the missing
+initiative-timing policy biting. It is not. Sampling 38 claims across six games: it takes
+**3.37 actions in the round before claiming** and has **1.18 ready resources unspent**
+when it does. Only 3 of 38 claims came with no actions taken. The gap against random is
+random passing at arbitrary moments, not the AI claiming early. Not pursued.
+
 ## Known gaps (future passes)
 
 - No initiative-timing policy (when to claim vs squeeze one more action).

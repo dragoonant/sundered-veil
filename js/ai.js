@@ -1,6 +1,15 @@
-// ai.js — one machine, three difficulties: enumerate legalActions, score each
-// resulting position, pick the best. See docs/ai.md for the reasoning behind every
-// weight. Depends on: engine. Deterministic given the state (uses seeded RNG).
+// ai.js — one machine, four difficulties: enumerate legalActions, score each resulting
+// position, pick the best. See docs/ai.md for the reasoning behind every weight.
+// Depends on: engine. Deterministic given the state (uses seeded RNG).
+//
+// easy/mid/hard share the BASE weight profile. 'competition' is the same machine with a
+// richer profile — terms that price things the base evaluator is blind to. Keeping the
+// profiles apart is what makes a change measurable: a deck-vs-deck matrix cannot say
+// whether the AI got stronger (every deck plays the same AI, so the mean is 50% by
+// construction), but competition vs hard head to head answers exactly that:
+//   node tools/ai-balance.mjs --group competitive --vs hard --difficulty competition
+// A term earns promotion into the base profile by winning that gauntlet, not by seeming
+// sensible. docs/ai.md records one that seemed sensible and measured backwards.
 (function (SB) {
   'use strict';
 
@@ -11,10 +20,7 @@
     baseDamage: 10,        // per point of damage on a base (win condition)
     unitOnBoard: 8,        // flat value of having a body
     unitPower: 4,          // per point of effective power
-    lockedPower: 0.5,      // multiplier on the power of a unit that CANNOT attack (see
-                           // SB.attackBlocked). Not zero: it still hits back when it is
-                           // defended into, so half its power is still real. Not one:
-                           // an attacker that cannot attack is not an attacker.
+    lockedPower: 1,        // (competition prices this; see PROFILES)
     unitHp: 3,             // per point of remaining HP
     shield: 6,             // a shield eats a whole hit
     upgrade: 3,            // attached upgrade residual value
@@ -23,6 +29,9 @@
                            // (docs/ai.md, "TRIED, FAILED, REVERTED").
     readyResource: 1,      // unspent mana this turn ≈ small
     resource: 5,           // permanent economy
+    credit: 0,             // (competition prices these three; see PROFILES)
+    force: 0,
+    deathPayoff: 1,
     initiative: 6,         // acting first next round
     leaderDeployed: 10,    // a leader unit is a strong body with upside
     // Penalties (policy that position value can't express):
@@ -33,11 +42,42 @@
                            // plays but must never argue against deploying at all.
   };
 
+  // ---- profiles -----------------------------------------------------------
+  // Competition sees things the base evaluator does not. Each override is one concept,
+  // and each is pinned by a test in tests/test-ai.js.
+  const COMPETITION = Object.assign({}, W, {
+    // Power you cannot swing with is not power. Not 0 — a locked unit still hits back
+    // when it is defended into. Not 1 — an attacker that cannot attack is not one.
+    lockedPower: 0.5,
+    // A credit is a resource you get to spend ONCE. SB.readyResources already counts it
+    // as spendable-now (1); this is the rest of it, since it keeps until spent.
+    credit: 3,
+    // The power token is binary and gates whole abilities (ab.forceCost). The base
+    // evaluator scored it at exactly zero, so a deck built on it paid to do nothing.
+    force: 5,
+    // HP prices how hard a unit is to kill; for a unit that pays its controller when it
+    // dies, being killed is partly the point. Symmetric on purpose: it also stops the AI
+    // trading eagerly into a unit that rewards its owner for dying.
+    deathPayoff: 0.5,
+  });
+  const PROFILES = { competition: COMPETITION };
+  // The active profile. Set for the duration of a decision and restored after, so a
+  // caller that does not name a difficulty always gets base behaviour.
+  let P = W;
+  function profileFor(difficulty) { return PROFILES[difficulty] || W; }
+
+  // Does this unit pay its controller when it dies? Upgrades and granted abilities
+  // count: a martyr wearing a "when defeated" upgrade is as happy to die as a printed one.
+  function paysOnDeath(state, u) {
+    const abs = SB.unitAllAbilities ? SB.unitAllAbilities(state, u) : (SB.unitDef(u).abilities || []);
+    return (abs || []).some(function (ab) { return ab.trigger === 'whenDefeated'; });
+  }
+
   function sideValue(state, p) {
     const pl = state.players[p];
     let v = 0;
     v -= state.players[SB.other(p)].base.damage * 0; // (enemy damage counted from their side)
-    v -= pl.base.damage * W.baseDamage;
+    v -= pl.base.damage * P.baseDamage;
     SB.allUnits(state, p).forEach(function (u) {
       // Power the unit cannot swing with is discounted, which is what makes an
       // enabler legible: damaging your own "can attack only while damaged" unit reads
@@ -45,29 +85,37 @@
       // Exhaustion is deliberately NOT a block here — it is the normal turn cycle,
       // and pricing it as a defect would talk the AI out of attacking at all.
       const blocked = SB.attackBlocked && SB.attackBlocked(state, u);
-      const powerWorth = W.unitPower * (blocked ? W.lockedPower : 1);
-      v += W.unitOnBoard + SB.unitPower(state, u) * powerWorth +
-        SB.unitRemainingHp(state, u) * W.unitHp + u.shields * W.shield;
+      const powerWorth = P.unitPower * (blocked ? P.lockedPower : 1);
+      const hpWorth = P.unitHp * (paysOnDeath(state, u) ? P.deathPayoff : 1);
+      v += P.unitOnBoard + SB.unitPower(state, u) * powerWorth +
+        SB.unitRemainingHp(state, u) * hpWorth + u.shields * P.shield;
     });
     // An upgrade counts for whoever played it — a bounty sits on an ENEMY unit
     // but is still worth something to its owner.
     SB.allUnits(state).forEach(function (u) {
       u.upgrades.forEach(function (inst) {
-        if (SB.upgradeOwner(u, inst) === p) v += W.upgrade;
+        if (SB.upgradeOwner(u, inst) === p) v += P.upgrade;
       });
     });
-    v += pl.hand.length * W.handCard;
-    v += pl.resources.length * W.resource;
-    v += SB.readyResources(state, p) * W.readyResource;
-    if (pl.leader.deployed) v += W.leaderDeployed;
-    if (state.initiative === p) v += W.initiative;
+    v += pl.hand.length * P.handCard;
+    v += pl.resources.length * P.resource;
+    v += SB.readyResources(state, p) * P.readyResource;
+    v += (pl.credits || 0) * P.credit;
+    if (pl.force) v += P.force;
+    if (pl.leader.deployed) v += P.leaderDeployed;
+    if (state.initiative === p) v += P.initiative;
     if (state.winner === p) v += 100000;
     if (state.winner === SB.other(p)) v -= 100000;
     return v;
   }
 
-  AI.evaluate = function (state, me) {
-    return sideValue(state, me) - sideValue(state, SB.other(me));
+  // difficulty is optional: callers inside a decision inherit the active profile.
+  AI.evaluate = function (state, me, difficulty) {
+    if (difficulty == null) return sideValue(state, me) - sideValue(state, SB.other(me));
+    const prev = P;
+    P = profileFor(difficulty);
+    try { return sideValue(state, me) - sideValue(state, SB.other(me)); }
+    finally { P = prev; }
   };
 
   // Resolve any pending queue choices greedily (for lookahead only): among choice
@@ -114,9 +162,9 @@
         'baseHeal', 'unitHeal', 'readied', 'attached'].indexOf(l.type) >= 0;
     }).length;
     if (realEffects === 0 && action.type === 'playCard' && SB.card(action.cardId).type === 'event') {
-      return W.wastedPlay; // the whole card did nothing
+      return P.wastedPlay; // the whole card did nothing
     }
-    return fizzles * W.wastedTrigger; // incidental trigger wasted; deliberately small
+    return fizzles * P.wastedTrigger; // incidental trigger wasted; deliberately small
   }
 
   AI.chooseAction = function (state, difficulty) {
@@ -126,6 +174,10 @@
     if (acts.length === 1) return acts[0];
 
     const noise = difficulty === 'easy' ? 25 : difficulty === 'mid' ? 4 : 0;
+    const deep = difficulty === 'hard' || difficulty === 'competition';
+    const prevProfile = P;
+    P = profileFor(difficulty);
+    try {
     const rand = SB.rng(SB.stateSeed(state, 'ai'));
     // Easy blunders: occasionally pick uniformly at random.
     if (difficulty === 'easy' && rand() < 0.2) {
@@ -146,7 +198,7 @@
       let v = base - wasted;
       let swing = 0;
       // Hard: one-ply min over the opponent's best reply.
-      if (difficulty === 'hard' && !SB.isTerminal(after) && after.queue.length === 0 &&
+      if (deep && !SB.isTerminal(after) && after.queue.length === 0 &&
           after.phase === 'action' && after.active !== me) {
         swing = bestReplySwing(after, SB.other(me));
         v = v - 0.5 * swing;
@@ -157,6 +209,7 @@
     });
     if (trace) AI.lastScores = { me: me, best: best, bestV: bestV, all: trace };
     return best;
+    } finally { P = prevProfile; }
   };
 
   function bestReplySwing(state, opp) {
