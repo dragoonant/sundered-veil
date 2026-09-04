@@ -25,7 +25,9 @@ per-set swu-db dumps (primary) and the dotgg dump (fallback) from scratch, appen
 skeleton lines for ids not yet in `data/cards-<set>.js` below a marker comment, writes the
 printed text to `<scratch>/workpackets/<set>.json` for the authoring pass, extends
 `<scratch>/trait-map.json` for new traits, and registers the tournament lists from
-`<scratch>/decks.json`. `--dry-run` prints the plan. Existing lines are never touched.
+`<scratch>/decks.json`. `--dry-run` prints the plan. Existing lines are never touched. Neither database records an
+upgrade's stat bonus; run `node tools/pull-upgrade-stats.mjs` afterwards to fill `power`/`hp`
+on upgrade lines that lack them (two numbers from the official card API, nothing else).
 
 Deck registry fields beyond `leader/base/cards`: `sideboard` (validated like the main
 deck; the 3-copy limit counts main + sideboard), `format` (`premier` | `eternal`, shown
