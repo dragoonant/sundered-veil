@@ -453,6 +453,30 @@ alternates strictly, so a setup-then-payoff line — satisfy a gate this action,
 next — cannot be seen at one ply, because the opponent always acts in between. No weight
 can price what the search cannot reach.
 
+### The exchange search — 62.1% against hard, and the Phase 1 answer
+
+Same gauntlet, same seed, 760 games: **62.1%**. Six point seven standard errors. After
+four weight terms measured at 49-50%, depth was the whole story.
+
+```
+deck spread, competition piloting each list against hard piloting the field
+  best   Forgemother's Steel 78.9%   Kael's Wingmen 73.7%   Vane's Contract 73.7%
+  worst  Zhael's Misfortune  44.7%   Kade's Armada  50.0%   Kresh's        50.0%
+  19 of 20 decks at or above 50%; the one below is 0.65 SE on a 38-game row
+```
+
+0 draws, 0 timeouts, 89 actions/game (unchanged). 8.0s a game against hard's 3.3s.
+
+**Why depth and not weights.** `advanceTurn` alternates strictly, so any line that sets
+something up and cashes it on your next action has an opponent action wedged in the
+middle. At one ply that line does not exist. `hard`'s `bestReplySwing` could price
+their reply but never my answer to it, and the answer is the whole point of a setup.
+No weight can price what the search cannot reach — which is also, in hindsight, why
+four carefully argued terms measured at nothing.
+
+Width is a profile weight (`exchangeWidth`, 0 = off for base difficulties). The curve
+either side of 3 is being measured rather than assumed.
+
 ### Checked and NOT a defect: initiative timing
 
 The fingerprint (tools/ai-fingerprint.mjs, new) showed the AI ending its round by claiming
