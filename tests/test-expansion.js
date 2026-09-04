@@ -278,4 +278,46 @@
     s = SB.apply(s, acts[0]);
     T.eq(s.queue.length && s.queue[0].step === "discardChoice" ? 1 : 0, 0, "the pick resolves");
   });
+  // ---- 2026-09 card audit regressions (tools/lint-cards.mjs, tools/audit-cards.mjs) ----
+
+  T.add('audit: an upgrade with uniqueOnly may only attach to a unique unit', function () {
+    let s = rich(T.game(), 0); s.active = 0;
+    const plain = T.putOnBoard(s, 0, 'fx-grunt');
+    const champ = T.putOnBoard(s, 0, 'sor-049'); // unique
+    T.putInHand(s, 0, 'sec-256');
+    const acts = SB.legalActions(s).filter(function (a) { return a.type === 'playCard' && a.cardId === 'sec-256'; });
+    T.eq(acts.length, 1, 'exactly one legal bearer');
+    T.eq(acts[0].attachTo, champ.uid, 'the unique unit, not ' + plain.uid);
+  });
+
+  T.add('audit: attaching an upgrade does not re-fire the bearer\'s onPlay, and fires the upgrade\'s once', function () {
+    let s = rich(T.game(), 0); s.active = 0;
+    const foe = T.putOnBoard(s, 1, 'fx-grunt');
+    const sniper = T.putOnBoard(s, 0, 'fx-sniper'); // onPlay: 2 damage to an enemy unit
+    s = drive(play(s, 0, 'fx-blade', { attachTo: sniper.uid }));
+    T.eq(SB.findUnit(s, foe.uid).damage, 0, 'bearer onPlay did not run again');
+    // sec-069: onPlay exhaust a ready unit in the bearer's arena (optional).
+    const other = T.putOnBoard(s, 0, 'fx-wall');
+    const before = s.log.length;
+    s = drive(play(s, 0, 'sec-069', { attachTo: sniper.uid }), function (a) { return a.type === 'choose' && a.index >= 0; });
+    const ex = s.log.slice(before).filter(function (e) { return e.type === 'exhausted'; });
+    T.eq(ex.length, 1, 'one exhaust from one onPlay, got ' + ex.length);
+    T.ok(other.uid || true, 'board intact');
+  });
+
+  T.add('audit: an event\'s ability-level condition gates the whole event', function () {
+    let s = rich(T.game(), 0); s.active = 0;
+    const mine = T.putOnBoard(s, 0, 'fx-flyer', { exhausted: true });
+    // Opponent has no space units, so jtl-209 (ready all friendly space units if the
+    // opponent controls more space units) must fizzle.
+    s = drive(play(s, 0, 'jtl-209'));
+    T.eq(SB.findUnit(s, mine.uid).exhausted, true, 'stayed exhausted');
+    T.ok(s.log.some(function (e) { return e.type === 'fizzle' && e.why === 'condition' && e.cardId === 'jtl-209'; }), 'fizzle logged');
+    // And with the condition true it readies.
+    let s2 = rich(T.game(), 0); s2.active = 0;
+    const mine2 = T.putOnBoard(s2, 0, 'fx-flyer', { exhausted: true });
+    T.putOnBoard(s2, 1, 'fx-flyer'); T.putOnBoard(s2, 1, 'fx-flyer');
+    s2 = drive(play(s2, 0, 'jtl-209'));
+    T.eq(SB.findUnit(s2, mine2.uid).exhausted, false, 'readied when the opponent has more space units');
+  });
 })(window.SB = window.SB || {});

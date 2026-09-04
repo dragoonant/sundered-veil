@@ -110,12 +110,9 @@
           if (card.attachTo === 'friendly' && u.owner !== me) return;
           if (card.attachTo === 'enemy' && u.owner === me) return;
           if (card.attachArena && SB.arenaOf(state, u) !== card.attachArena) return;
-          if (card.attachFilter) {
-            const f = card.attachFilter;
-            const traits = (SB.unitDef(u).traits || []).concat(SB.card(u.cardId).traits || []);
-            if (f.notTrait && traits.indexOf(f.notTrait) >= 0) return;
-            if (f.trait && traits.indexOf(f.trait) < 0) return;
-          }
+          // One attach-legality rule for every path (js/ops2.js SB.attachAllowed):
+          // trait / notTrait / uniqueOnly / damaged / attachArena.
+          if (!SB.attachAllowed(state, card, u)) return;
           if (card.costModAttach && attachDiscountApplies(card.costModAttach, u)) {
             const c2 = Math.max(0, SB.cardCost(state, me, inst.cardId) + card.costModAttach.delta);
             if (c2 > SB.readyResources(state, me)) return;
@@ -395,7 +392,7 @@
         p.discard.push(inst);
         p.eventsThisRound = (p.eventsThisRound || 0) + 1;
         const ab = (card.abilities || []).find(function (a) { return a.trigger === 'onPlay'; });
-        if (ab) SB.queueEffects(state, me, ab.effects, { cardId: inst.cardId, eventUid: inst.uid });
+        if (ab) SB.queueEffects(state, me, ab.effects, { cardId: inst.cardId, eventUid: inst.uid, condition: ab.condition });
       }
     } else if (action.type === 'deployLeaderPilot') {
       const lc = SB.card(p.leader.cardId);
@@ -589,7 +586,8 @@
       if (negated) {
         SB.log(state, { type: 'fizzle', why: 'negated', cardId: inst.cardId, fizzled: true, notice: true });
       } else {
-        SB.queueEffects(state, me, collectEffects(card), { cardId: inst.cardId, eventUid: inst.uid });
+        const evAb = eventAbility(card);
+        SB.queueEffects(state, me, evAb ? evAb.effects : [], { cardId: inst.cardId, eventUid: inst.uid, condition: evAb && evAb.condition });
       }
     } else if (card.type === 'upgrade') {
       const target = SB.findUnit(state, action.attachTo);
@@ -603,7 +601,9 @@
         if (ab.trigger !== 'onPlay') return;
         SB.queueEffects(state, me, ab.effects, { sourceUid: target.uid, cardId: inst.cardId, condition: ab.condition });
       });
-      SB.fireTriggers(state, 'onPlay', target, { sourceUid: target.uid, upgradeCardId: inst.cardId });
+      // Do NOT fire 'onPlay' on the bearer here: that re-ran the bearer's own
+      // when-played ability and ran the upgrade's a second time. Observers use
+      // 'onUpgradePlayed'.
       SB.allUnits(state, me).forEach(function (obs) {
         SB.fireTriggers(state, 'onUpgradePlayed', obs, { sourceUid: obs.uid, upgradeCardId: inst.cardId });
       });
@@ -611,10 +611,10 @@
     }
   }
 
-  function collectEffects(card) {
-    // Events store their effects as a single 'onPlay' ability.
-    const ab = (card.abilities || []).find(function (a) { return a.trigger === 'onPlay'; });
-    return ab ? ab.effects : [];
+  // Events store their effects as a single 'onPlay' ability; its ability-level
+  // condition travels with the effects so the whole event fizzles when it is false.
+  function eventAbility(card) {
+    return (card.abilities || []).find(function (a) { return a.trigger === 'onPlay'; });
   }
 
   function startAttack(state, me, action) {

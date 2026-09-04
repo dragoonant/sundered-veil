@@ -13,6 +13,28 @@ Start here in a fresh chat. Read CLAUDE.md first (it points at the binding docs)
 
 Suite: `node tools/run-tests.mjs --quiet` → 82 passed. Run it before every commit.
 
+## Card audit tools (2026-09-04, branch `claude/card-game-rules-audit-04luen`)
+
+Two scripts, zero model tokens to rerun. Run both after any engine or data change:
+
+- `node tools/lint-cards.mjs` — static: every condition name, selector key, amountRef,
+  saved-target reference, attach-filter key and keyword grant in `data/cards-*.js`
+  checked against the engine's real vocabulary (scraped from source). Clean = no output.
+- `node tools/audit-cards.mjs [--all] [--id <card>]` — behavioural: plays every authored
+  card on a stocked board (attack, defeat, unit action, deploy, leader action), auto-answers
+  choices, prints one line per card with THROW / DEAD / FIZZLE / NOEFFECT flags. Flags are
+  leads, not verdicts: `FIZZLE:condition` and `noTargets` usually mean the stocked board did
+  not satisfy the card; read `NOEFFECT` with no fizzle, `THROW`, `DEAD`, and repeated
+  fizzle counts (a single op fizzling twice means an ability fired twice).
+
+Bugs found and fixed by the first run (tests in `tests/test-expansion.js`, "audit:" prefix):
+
+1. Attaching an upgrade re-fired the bearer's own `onPlay` and ran the upgrade's `onPlay`
+   twice (`js/engine.js`, upgrade branch of playCard, since c36d416).
+2. Events dropped their ability-level `condition` (jtl-209, jtl-125 always resolved).
+3. The hand-play attach path ignored `uniqueOnly` / `damaged` / `attachArena` filters;
+   every attach path now goes through `SB.attachAllowed`.
+
 ## Open work, in the order agreed with the user
 
 1. **Card behaviour bugs seen in play.** The user saw several cards not doing what they should

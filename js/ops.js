@@ -1037,13 +1037,7 @@
       SB.allUnits(state).forEach(function (u) {
         if (card.attachTo === 'friendly' && u.owner !== itemStep.player) return;
         if (card.attachTo === 'enemy' && u.owner === itemStep.player) return;
-        if (card.attachFilter) {
-          const f = card.attachFilter;
-          const traits = SB.unitTraits(state, u);
-          if (f.notTrait && traits.indexOf(f.notTrait) >= 0) return;
-          if (f.trait && traits.indexOf(f.trait) < 0) return;
-          if (f.uniqueOnly && !SB.card(u.cardId).unique) return;
-        }
+        if (!SB.attachAllowed(state, card, u)) return;
         acts.push({ type: 'plotAttach', player: itemStep.player, uid: u.uid });
       });
       return acts.length ? acts : null;
