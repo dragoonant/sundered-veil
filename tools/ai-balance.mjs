@@ -13,6 +13,7 @@
 //   node tools/ai-balance.mjs [--games N] [--difficulty easy|mid|hard|competition]
 //                             [--seed TAG] [--policy ai|random] [--out FILE] [--quiet]
 //                             [--cap N] [--group NAME] [--vs DIFFICULTY] [--decks id,id]
+//                             [--weights key=value,key=value]
 //
 // --group NAME restricts the matrix to decks carrying that group tag (e.g. competitive),
 // which is the difference between 36 decks and 20 — the matrix is quadratic, so measuring
@@ -48,6 +49,7 @@ const POLICY = flag('policy', 'ai');
 const GROUP = flag('group', null);
 const VS = flag('vs', null);
 const ONLY = flag('decks', null);   // id,id — a smoke-test subset, not a measurement
+const WEIGHTS = flag('weights', null); // k=v,k=v applied to the competition profile
 if (POLICY !== 'ai' && POLICY !== 'random') { console.error('--policy must be ai or random'); process.exit(2); }
 const QUIET = argv.includes('--quiet');
 const NEWLINE = String.fromCharCode(10);
@@ -60,6 +62,19 @@ const ctx = vm.createContext({ window: win, console, SB: undefined });
 for (const s of srcs) vm.runInContext(readFileSync(join(root, s), 'utf8'), ctx, { filename: s });
 const SB = win.SB;
 SB.validateContent();
+
+// --weights lets one arm of an experiment differ from another by exactly one number,
+// with no edit to js/ai.js between runs — so the two arms cannot drift in any other way.
+if (WEIGHTS) {
+  const prof = SB.ai.profiles && SB.ai.profiles.competition;
+  if (!prof) { console.error('--weights needs SB.ai.profiles.competition'); process.exit(2); }
+  for (const pair of WEIGHTS.split(',')) {
+    const [k, v] = pair.split('=');
+    if (!(k in prof)) { console.error('unknown weight: ' + k); process.exit(2); }
+    prof[k] = Number(v);
+  }
+  console.error('weights: ' + WEIGHTS);
+}
 
 // Fixtures are test scaffolding, not playable decks; measuring them would skew the table.
 const decks = Object.keys(SB.decks)

@@ -61,6 +61,10 @@
     deathPayoff: 0.5,
   });
   const PROFILES = { competition: COMPETITION };
+  // Exposed so a measurement run can vary ONE weight without editing this file, the
+  // way AI.trace is exposed for instrumentation (tools/ai-balance.mjs --weights).
+  // Nothing in the game writes to it.
+  AI.profiles = PROFILES;
   // The active profile. Set for the duration of a decision and restored after, so a
   // caller that does not name a difficulty always gets base behaviour.
   let P = W;
