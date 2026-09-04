@@ -427,7 +427,12 @@ all four terms                           (profile as authored)             49.3%
 deathPayoff alone           lockedPower=1,credit=0,force=0                 49.3%
 everything but deathPayoff  deathPayoff=1                                  50.4%
 own-side discount only      deathPayoffEnemy=1                             49.1%
+own-side, gentler           deathPayoff=0.75,deathPayoffEnemy=1            49.5%
 ```
+
+Four forms, four coin flips or worse, including both forms the failure analysis predicted
+would work. When a term loses symmetric, loses one-sided, and loses at a softer
+magnitude, the shape being wrong is no longer the explanation — the claim is.
 
 **deathPayoff is out.** It lost in every form, including the two the analysis predicted
 would fix it. It is not mistuned; the claim itself does not hold up. Set to 1, machinery
