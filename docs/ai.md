@@ -415,6 +415,39 @@ The lesson is not about this term. It is that a 38-game row invites a story, and
 will survive right up until it is measured. Aggregate first; only chase a deck-specific
 effect at 6+ games per pairing, where a row is 228 games and SE is 3.3%.
 
+### Phase 1 verdict — the scoreboard
+
+Every arm: competition vs hard, 20 competitive decks, every pairing played twice with the
+seats swapped, 760 decided games, seed `g1`. SE ~1.8%, so anything inside 50 +/- 3.6% is
+a coin flip.
+
+```
+arm                                      weights                          result
+all four terms                           (profile as authored)             49.3%
+deathPayoff alone           lockedPower=1,credit=0,force=0                 49.3%
+everything but deathPayoff  deathPayoff=1                                  50.4%
+own-side discount only      deathPayoffEnemy=1                             49.1%
+```
+
+**deathPayoff is out.** It lost in every form, including the two the analysis predicted
+would fix it. It is not mistuned; the claim itself does not hold up. Set to 1, machinery
+kept, test rewritten to pin the mechanism with the weight temporarily on rather than to
+assert the term is a good idea.
+
+**The other three stay, and are honestly labelled.** They are inert at this scale — 50.4%
+is a coin flip too — because `attackOnlyDamaged` is 1 deck of 20 and force and credits
+are 2 each. They are correctness, not strength, and the frequency table above is the
+reason to expect nothing else from them.
+
+**What Phase 1 actually bought:** one blunder fixed at the table (the Cad Bane ping), the
+force token no longer valued at zero, a harness that can answer "is this AI stronger"
+instead of "is the field balanced", and four hypotheses killed cheaply. No winrate.
+
+That points at depth rather than weights, which is where competition goes next: the engine
+alternates strictly, so a setup-then-payoff line — satisfy a gate this action, use it the
+next — cannot be seen at one ply, because the opponent always acts in between. No weight
+can price what the search cannot reach.
+
 ### Checked and NOT a defect: initiative timing
 
 The fingerprint (tools/ai-fingerprint.mjs, new) showed the AI ending its round by claiming
