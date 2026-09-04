@@ -5,7 +5,8 @@
 
 # Full-resolution art masters stay out of the repo (downscaled copies go in art/)
 # The card back is the exception: it is hand-supplied branding, not something
-# tools/gen-art.mjs can regenerate, so the master ships with the repo.
+# tools/gen-art.mjs can regenerate, so the master ships with the repo — and the
+# WebP the game draws is derived from it, so that ships too.
 art-masters/*
 !art-masters/cardback-master.jpg
 
@@ -22,10 +23,10 @@ Thumbs.db
 desktop.ini
 
 # Generated assets stay out of the repo (regenerate via tools/gen-art.mjs, tools/gen-sfx.mjs)
-# art/cardback.jpg is the exception, for the same reason as its master above:
+# art/cardback.webp is the exception, for the same reason as its master above:
 # no prompt produces it, so without it a fresh clone has no card back at all.
 art/*
-!art/cardback.jpg
+!art/cardback.webp
 sfx/
 art-gen.log
 art-regen.log

@@ -16,11 +16,11 @@ const outDir = join(root, 'art', 'thumbs');
 mkdirSync(outDir, { recursive: true });
 
 const ids = flag('--only') ? flag('--only').split(',')
-  : readdirSync(join(root, 'art')).filter(f => f.endsWith('.png')).map(f => f.slice(0, -4));
+  : readdirSync(join(root, 'art')).filter(f => f.endsWith('.webp')).map(f => f.slice(0, -5));
 
 const bufs = [];
 for (const id of ids) {
-  const src = join(root, 'art', id + '.png');
+  const src = join(root, 'art', id + '.webp');
   if (!existsSync(src)) { console.error('missing', id); continue; }
   const out = join(outDir, id + '.jpg');
   if (!args.includes('--force') && existsSync(out) && !flag('--sheet')) continue;

@@ -101,19 +101,25 @@
 
   function loadMusic() {
     if (Music.loading) return Music.loading;
+    // sfx/music.mp3 is only the fallback for a build with no tier tracks, and it is
+    // the largest file in sfx/ — fetch it ONLY once the tiers are known to be missing,
+    // never alongside them.
     Music.loading = Promise.all([
       fetchBuffer('music-1'), fetchBuffer('music-2'), fetchBuffer('music-3'),
-      fetchBuffer('end-win'), fetchBuffer('end-loss'), fetchBuffer('music'),
+      fetchBuffer('end-win'), fetchBuffer('end-loss'),
     ]).then(function (r) {
+      Music.endBuffers = { win: r[3], loss: r[4] };
       if (r[0] && r[1] && r[2]) {
         Music.buffers = { 1: r[0], 2: r[1], 3: r[2] };
-      } else if (r[5]) {
+        return;
+      }
+      return fetchBuffer('music').then(function (one) {
+        if (!one) return;
         // Single-track fallback: one recording, rising playback rate per tier.
-        Music.buffers = { 1: r[5], 2: r[5], 3: r[5] };
+        Music.buffers = { 1: one, 2: one, 3: one };
         Music.tierRates = [1.0, 1.09, 1.18];
         Music.sharedFallback = true;
-      }
-      Music.endBuffers = { win: r[3], loss: r[4] };
+      });
     });
     return Music.loading;
   }

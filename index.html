@@ -133,8 +133,8 @@
 <script>
 (function () {
   SB.validateContent();
-  SB.artUrl = function (cardId) { return 'art/' + cardId + '.png'; };
-  SB.cardBackUrl = function () { return 'art/cardback.jpg'; };
+  SB.artUrl = function (cardId) { return 'art/' + cardId + '.webp'; };
+  SB.cardBackUrl = function () { return 'art/cardback.webp'; };
   // The board draws itself and places every zone on its own painted slot.
   SB.boardArt.init(document.getElementById('mat'));
   SB.hud.init();

@@ -1,6 +1,8 @@
 // gen-art.mjs — card art generator. Reads tools/art-prompts.json (id -> subject
 // line), combines each subject with the byte-identical STYLE block, and writes
-// art/<id>.png at 512x512 via the HF router (nscale / FLUX.1-schnell).
+// art/<id>.webp at 512x704 via the HF router (nscale / FLUX.1-schnell). The router
+// returns PNG; it is re-encoded to WebP on the way to disk, which is ~10x smaller
+// for these illustrations at no visible cost (see tools/webp-art.mjs).
 //
 // Idempotent: skips existing files. Flags:
 //   --dry-run          print the full plan, generate nothing (free)
@@ -9,7 +11,8 @@
 //   --force            regenerate even if the file exists
 //   --size <WxH>       output size (default 512x704 portrait; arenas use 1024x640)
 // Key resolution: --key flag > HF_TOKEN env > .hf_token file.
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
+import sharp from 'sharp';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,7 +41,7 @@ mkdirSync(outDir, { recursive: true });
 const plan = [];
 for (const [id, subject] of Object.entries(prompts)) {
   if (only && !only.includes(id)) continue; // exact match only — no substrings
-  const out = join(outDir, id + '.png');
+  const out = join(outDir, id + '.webp');
   if (existsSync(out) && !has('--force')) continue;
   plan.push({ id, subject, out });
 }
@@ -67,7 +70,7 @@ for (const p of plan) {
       continue;
     }
     const j = await r.json();
-    writeFileSync(p.out, Buffer.from(j.data[0].b64_json, 'base64'));
+    await sharp(Buffer.from(j.data[0].b64_json, 'base64')).webp({ quality: 90, effort: 5 }).toFile(p.out);
     done++;
     console.log('ok', p.id, '(' + done + '/' + plan.length + ')');
   } catch (e) {

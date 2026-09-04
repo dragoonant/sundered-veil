@@ -90,7 +90,7 @@
   // which one you get is rolled per game rather than fixed, so a long session does not
   // play out against the same board. Both players' resource rows draw the SAME roll —
   // one board, one location, seen from two sides — but the two arenas roll separately.
-  const SCENES = 5;                      // shots per set; files are <key>-1..5.png
+  const SCENES = 5;                      // shots per set; files are <key>-1..5.webp
   const SLOT_SCENE = { resources: 'slot-res', discard: 'slot-disc' };
   // The two discard piles roll SEPARATELY, and never to the same shot as each other:
   // they are small, they sit one above the other, and identical art in both read as
@@ -128,7 +128,7 @@
     };
     for (let guard = 0; guard < SCENES && SCENES > 1 && taken(n); guard++) n = 1 + (n % SCENES);
     lastScene[seed] = n;
-    return { href: 'art/' + key + '-' + n + '.png', n: n };
+    return { href: 'art/' + key + '-' + n + '.webp', n: n };
   }
 
   // ---- drawing -------------------------------------------------------------

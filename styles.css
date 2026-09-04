@@ -953,7 +953,7 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   position: fixed; inset: 0; z-index: 80; display: none;
   place-items: center; text-align: center;
   background: #05070d center/cover no-repeat;
-  background-image: url('art/title-duel.png');
+  background-image: url('art/title-duel.webp');
 }
 #title-screen.open { display: grid; }
 /* The picker needs the art readable behind it but not competing with it. */
