@@ -386,6 +386,35 @@ The two halves are separate claims and only one of them looks defensible. Split 
 `deathPayoff` (my units — I should trade them more freely) and `deathPayoffEnemy`
 (their units — should I really want to kill them less?), so each can be measured alone.
 
+### Arm A — `deathPayoff` alone: 49.3%, the same number, the same decks
+
+Identical to the four-term bundle, and per-deck correlation between the two arms is
+**0.968**. One term is the entire effect; `lockedPower`, `credit` and `force` are
+inert at this scale, exactly as their card frequencies said they would be. Anything
+appearing in 1-2 decks of 20 cannot move a 760-game aggregate — measure those per deck or
+not at all.
+
+### READ THIS BEFORE TRUSTING A PER-DECK NUMBER
+
+The per-deck rows above are **38 games each** (19 opponents x 2 seats x 1 game): standard
+error ~8.1%. Across 20 rows, an outlier of +/-16 to 24 points is what chance alone
+produces. Tessa's Trust at -23.7 is 2.9 SE picked out of 20 candidates after the fact;
+Zhael's Misfortune at +15.8 is 1.9 SE. **Neither survives as evidence on its own.** The
+aggregate — 760 games, SE 1.8% — is the only number in a gauntlet run with real power.
+
+Two mechanisms were hypothesised for the -23.7 from those rows, and both were then
+measured and **falsified**:
+
+- *"It stops removing enemy death-trigger units."* Attack share is 21.6% (hard) against
+  21.5% (competition) — unchanged.
+- *"It attacks the wrong targets."* Over 7 games deck-c03 made **62-64 attacks on the
+  base and 4-5 into units**. It is a base-race deck; it barely fights units at all, so
+  target selection cannot be worth 23 points either.
+
+The lesson is not about this term. It is that a 38-game row invites a story, and the story
+will survive right up until it is measured. Aggregate first; only chase a deck-specific
+effect at 6+ games per pairing, where a row is 228 games and SE is 3.3%.
+
 ### Checked and NOT a defect: initiative timing
 
 The fingerprint (tools/ai-fingerprint.mjs, new) showed the AI ending its round by claiming
