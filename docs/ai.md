@@ -193,7 +193,13 @@ instead of `pl.hand.length * W.handCard`, so the cheapest way to gain a resource
 bank a card you cannot cast. Implemented as a reach decay (`outOfReachDecay: 0.15`,
 `outOfReachFloor: 0.4`) and measured on the same matrix, same seed, same 1440 games.
 
-**It made the AI worse, and it is reverted. Do not try it again in this form.**
+**It made the AI worse. Do not try it again in this form.**
+
+> **Correction, 2026-09-03.** This section claimed the change was reverted. It was not:
+> the commit that recorded the failure (`9561922`) touched only this file, so the losing
+> heuristic stayed live in `js/ai.js` for three days and every measurement taken in that
+> window was taken on it. The code is reverted now, as part of the Competition-difficulty
+> work. **A doc that says "reverted" is not a revert — check the diff.**
 
 ```
                        before   after   delta   random
@@ -224,6 +230,80 @@ fixes. Breaking the tie with a wrong tiebreaker is worse than leaving it arbitra
 because a systematic bad choice beats a random one only when the systematics are right.
 The tie itself is still a real defect — about 19% of decisions — but the fix has to know
 which card is actually surplus, which needs more than cost-versus-reach.
+
+## Competition difficulty — Phase 1: enablement (2026-09-03)
+
+`sideValue` priced a unit as body + power + HP + shields, with no term for whether the
+unit can act at all. The failure that exposed it: `ash-011`'s free leader action deals 1
+damage to a unit with 2+ remaining HP (so it can never kill), and `lof-063` — in the same
+competitive list — is a 5/5 that can attack ONLY while damaged. The correct play is to
+ping your OWN 5/5 to switch it on. The AI scored that as −3 HP with no upside and pinged
+a harmless enemy 1/4 instead. It was not misjudging the combo; it could not see it.
+
+The term: `SB.attackBlocked(state, unit)` (js/engine.js, extracted from the predicate
+`legalActions` already used, so the two cannot drift) reports why a unit cannot attack,
+ignoring exhaustion. `sideValue` multiplies a blocked unit's power by `W.lockedPower`.
+
+- **0.5, not 0** — a locked unit still deals its power when it is defended into.
+- **0.5, not 1** — an attacker that cannot attack is not an attacker.
+- **Exhaustion is deliberately not a block.** It is the normal turn cycle; pricing it as
+  a defect would argue the AI out of attacking at all.
+
+This generalises past the one card: the same term makes pinging the ENEMY's locked unit
+read as the gift it is, and it will price every future "only while X" unit without
+anything being taught about that card specifically.
+
+Pinned in tests/test-ai.js: it pings its own locked 5/5 over a harmless enemy; it does
+not switch on the enemy's; and a locked unit evaluates below the same unit unlocked.
+Setting `lockedPower` back to 1.0 fails two of the three, so the tests bite.
+
+**Measured: no effect at matrix scale, and it cannot have one.** A/B over the competitive
+matrix (seed `comp1`, 2 games/pairing, 760 games/arm), `lockedPower` 0.5 against 1.0,
+nothing else changed: **6 games out of 1520 changed hands.** Every one of them was in a
+pairing against `deck-c01`, because `deck-c01` is the only competitive list holding
+`lof-063`, and `lof-063` is the only card in a 1527-card pool with `attackOnlyDamaged`.
+
+The term is KEPT: it is correct, it is pinned by tests, it costs one multiply per unit,
+and it fixes a decision watched at the table. But it buys ~nothing on the matrix, and no
+matrix at this card frequency could say otherwise. **A term that fires on one card in
+1527 is a correctness fix, not a strength fix — do not expect winrate from it.**
+
+## Competitive baseline and control — 2026-09-03, seed `comp1`, 2 games/pairing
+
+First measurement of the 20 tournament lists. 760 games/arm, 0 draws, 0 timeouts, 88
+actions/game mean. Seat 1: **48.6%** under the AI, 50.8% under random — initiative stays
+fairly priced on these lists.
+
+**The control is the finding.** Six decks are piloted WORSE THAN RANDOM:
+
+```
+deck                     leader     AI     random    gap
+Zhael's Misfortune       jtl-002   21.1%   50.0%   -28.9
+Voss's Full Hand         law-018   35.5%   57.9%   -22.4
+Skarn's Shadow           lof-009   40.8%   57.9%   -17.1
+Dray's Audit             sec-010   19.7%   35.5%   -15.8
+Wyn's Foresight          twi-004   63.2%   75.0%   -11.8
+Vale's Vow              ts26-002   60.5%   69.7%    -9.2
+                    ... and, at the other end ...
+The Forgemother's Steel  ash-001   73.7%   25.0%   +48.7
+Kael's Wingmen           jtl-012   64.5%   44.7%   +19.7
+Korrin's Run             ash-014   48.7%   30.3%   +18.4
+```
+
+Losing to random is not a missing heuristic — random has none. It means the policy is
+**systematically choosing bad moves** in those archetypes, and two of them read straight
+off their leaders:
+
+- `jtl-002` (worst, -28.9) reuses a *whenDefeated* ability: the deck wants its own units
+  to die. `sideValue` prices every body at +8 plus power and HP, so the AI protects the
+  units whose deaths ARE the engine, and declines the trades the deck is built on.
+- `law-018` (-22.4) mills for credits. Credits are not in `sideValue` at all (see Known
+  gaps), so the AI spends a real resource for a currency it scores as zero — it is paying
+  to make its own position look worse.
+
+Both are missing terms in the evaluator, not missing deck knowledge. That is where the
+next Phase 1 pass goes: the six worse-than-random decks are 30% of the field, and the AI
+is actively throwing those games.
 
 ## Known gaps (future passes)
 

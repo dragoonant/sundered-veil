@@ -45,6 +45,71 @@
     }
   });
 
+  // ---- enablement: power you cannot swing with is not power ------------------
+  // ash-011's leader action is free and deals exactly 1 damage to a unit with 2+
+  // remaining HP, so it can never kill. lof-063 is a 5/5 that can attack ONLY while
+  // damaged — and both are in the same competitive list. The ping is the switch.
+  function withCadBane(seed) {
+    const s = T.game('fixtureA', 'fixtureB', seed);
+    s.active = 0; s.initiative = 0;
+    s.players[0].leader.cardId = 'ash-011';
+    s.players[0].leader.exhausted = false;
+    // An empty hand keeps the position about the ping: with cards to play the AI may
+    // reasonably do those first (the ping is free and keeps), and this test is about
+    // WHICH unit it points at, not when it fires.
+    s.players[0].hand = [];
+    return s;
+  }
+  // Drive the leader action to the point where its target is chosen, and report it.
+  function pingTarget(s) {
+    const act = SB.ai.chooseAction(s, 'hard');
+    if (act.type !== 'leaderAction') return { skipped: act.type };
+    let r = SB.apply(s, act);
+    let guard = 0;
+    while (r.queue.length && guard++ < 10) {
+      const acts = SB.legalActions(r);
+      const head = r.queue[0];
+      if (head.candidates) {
+        const pick = SB.ai.chooseAction(r, 'hard');
+        const cand = head.candidates[pick.index];
+        return { uid: cand && cand.uid };
+      }
+      r = SB.apply(r, acts[0]);
+    }
+    return { uid: null };
+  }
+
+  T.add('ai: pings its OWN locked unit to switch it on, not a harmless enemy', function () {
+    const s = withCadBane('ai-enable');
+    const mine = T.putOnBoard(s, 0, 'lof-063');   // 5/5, cannot attack until damaged
+    const theirs = T.putOnBoard(s, 1, 'ash-248'); // 1/4: pinging it achieves nothing
+    const got = pingTarget(s);
+    T.ok(!got.skipped, 'takes the free leader action (got ' + got.skipped + ')');
+    T.eq(got.uid, mine.uid, 'damages its own locked 5/5, not the enemy 1/4');
+    T.ok(got.uid !== theirs.uid, 'and specifically not the harmless enemy unit');
+  });
+
+  T.add('ai: does not ping the ENEMY unit that is waiting to be switched on', function () {
+    const s = withCadBane('ai-enable-enemy');
+    const theirs = T.putOnBoard(s, 1, 'lof-063');  // their 5/5, locked while undamaged
+    T.putOnBoard(s, 1, 'ash-248');                 // a legal alternative target
+    const got = pingTarget(s);
+    if (!got.skipped && got.uid != null) {
+      T.ok(got.uid !== theirs.uid, 'never hands the enemy a live 5/5');
+    }
+  });
+
+  T.add('ai: values a locked unit below the same unit unlocked', function () {
+    // The term itself, independent of any one decision.
+    const s = T.game('fixtureA', 'fixtureB', 'ai-locked-value');
+    const u = T.putOnBoard(s, 0, 'lof-063');
+    const locked = SB.ai.evaluate(s, 0);
+    const hot = JSON.parse(JSON.stringify(s));
+    SB.findUnit(hot, u.uid).damage = 1;            // now it can attack
+    T.ok(SB.ai.evaluate(hot, 0) > locked,
+      'a damaged 5/5 that can swing beats an untouched one that cannot');
+  });
+
   T.add('ai: full game vs itself terminates with a winner (mid)', function () {
     let s = SB.newGame({ deck0: 'deck-s1a', deck1: 'deck-s1b', seed: 'aivai' });
     let n = 0;

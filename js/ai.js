@@ -11,13 +11,16 @@
     baseDamage: 10,        // per point of damage on a base (win condition)
     unitOnBoard: 8,        // flat value of having a body
     unitPower: 4,          // per point of effective power
+    lockedPower: 0.5,      // multiplier on the power of a unit that CANNOT attack (see
+                           // SB.attackBlocked). Not zero: it still hits back when it is
+                           // defended into, so half its power is still real. Not one:
+                           // an attacker that cannot attack is not an attacker.
     unitHp: 3,             // per point of remaining HP
     shield: 6,             // a shield eats a whole hit
     upgrade: 3,            // attached upgrade residual value
-    handCard: 4,           // cards are options — see handCardValue: a card you cannot
-                           // afford is a weaker option than one you can.
-    outOfReachDecay: 0.15, // per resource a card's cost exceeds your resource count
-    outOfReachFloor: 0.4,  // an unaffordable card still has future value
+    handCard: 4,           // cards are options. Priced per CARD COUNT on purpose: the
+                           // per-card reach decay was measured and made the AI worse
+                           // (docs/ai.md, "TRIED, FAILED, REVERTED").
     readyResource: 1,      // unspent mana this turn ≈ small
     resource: 5,           // permanent economy
     initiative: 6,         // acting first next round
@@ -30,23 +33,20 @@
                            // plays but must never argue against deploying at all.
   };
 
-  // An unaffordable card is still an option, just a worse one: decay by how far out
-  // of reach it is, with a floor so a bomb is never treated as worthless.
-  function handCardValue(state, p, inst) {
-    const cost = SB.cardCost ? SB.cardCost(state, p, inst.cardId) : (SB.card(inst.cardId).cost || 0);
-    if (cost == null) return W.handCard;
-    const short = cost - state.players[p].resources.length;
-    if (short <= 0) return W.handCard;
-    return W.handCard * Math.max(W.outOfReachFloor, 1 - W.outOfReachDecay * short);
-  }
-
   function sideValue(state, p) {
     const pl = state.players[p];
     let v = 0;
     v -= state.players[SB.other(p)].base.damage * 0; // (enemy damage counted from their side)
     v -= pl.base.damage * W.baseDamage;
     SB.allUnits(state, p).forEach(function (u) {
-      v += W.unitOnBoard + SB.unitPower(state, u) * W.unitPower +
+      // Power the unit cannot swing with is discounted, which is what makes an
+      // enabler legible: damaging your own "can attack only while damaged" unit reads
+      // as unlocking its power, and pinging the ENEMY's reads as unlocking theirs.
+      // Exhaustion is deliberately NOT a block here — it is the normal turn cycle,
+      // and pricing it as a defect would talk the AI out of attacking at all.
+      const blocked = SB.attackBlocked && SB.attackBlocked(state, u);
+      const powerWorth = W.unitPower * (blocked ? W.lockedPower : 1);
+      v += W.unitOnBoard + SB.unitPower(state, u) * powerWorth +
         SB.unitRemainingHp(state, u) * W.unitHp + u.shields * W.shield;
     });
     // An upgrade counts for whoever played it — a bounty sits on an ENEMY unit
@@ -56,11 +56,7 @@
         if (SB.upgradeOwner(u, inst) === p) v += W.upgrade;
       });
     });
-    // Per CARD, not per card COUNT. A flat value made every bank score identically,
-    // so which card got resourced was decided by legalActions order — about 19% of
-    // all decisions (docs/ai.md). Scaling by reach means the cheapest way to gain a
-    // resource is to bank something you cannot cast, which is also how it is played.
-    pl.hand.forEach(function (inst) { v += handCardValue(state, p, inst); });
+    v += pl.hand.length * W.handCard;
     v += pl.resources.length * W.resource;
     v += SB.readyResources(state, p) * W.readyResource;
     if (pl.leader.deployed) v += W.leaderDeployed;

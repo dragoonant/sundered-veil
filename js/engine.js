@@ -127,13 +127,7 @@
 
     // Attacks.
     SB.allUnits(state, me).forEach(function (u) {
-      if (u.exhausted) return;
-      if (SB.unitPower(state, u) <= 0 && !unitHasKeyword(state, u, 'saboteur')) {
-        // A 0-power attack is legal in rules but only matters for on-attack triggers;
-        // keep it legal if the unit has any onAttack ability, else prune the noise.
-        if (!hasTrigger(u, 'onAttack') && SB.keywordTotal(state, u, 'raid') === 0) return;
-      }
-      if ((SB.unitDef(u).staticFlags || []).indexOf('attackOnlyDamaged') >= 0 && u.damage === 0) return;
+      if (u.exhausted || SB.attackBlocked(state, u)) return;
       SB.attackTargets(state, u).forEach(function (t) {
         acts.push({ type: 'attack', player: me, attacker: u.uid, target: t });
       });
@@ -788,6 +782,25 @@
         SB.queueEffects(state, attacker.owner, ab.effects, { sourceUid: attacker.uid });
       });
     }
+  };
+
+  // Why a unit cannot attack, ignoring exhaustion — exhaustion is a normal part of
+  // the turn cycle, while these are properties of the unit's own situation. Returns a
+  // reason string or null. js/ai.js prices a unit's power by this: power you cannot
+  // swing with is not power, so an ability that CLEARS a block (damaging your own
+  // 'only while damaged' unit) reads as the gain it is, and one that clears the
+  // ENEMY's reads as the gift it is.
+  SB.attackBlocked = function (state, u) {
+    // A 0-power attack is legal in the rules but only matters for on-attack triggers;
+    // keep it legal if the unit has one, else it is noise. (Printed abilities only —
+    // parity with what legalActions did before this predicate was extracted.)
+    if (SB.unitPower(state, u) <= 0 && !SB.hasKeyword(state, u, 'saboteur') &&
+        !(SB.unitDef(u).abilities || []).some(function (ab) { return ab.trigger === 'onAttack'; }) &&
+        SB.keywordTotal(state, u, 'raid') === 0) return 'noPower';
+    if ((SB.unitDef(u).staticFlags || []).indexOf('attackOnlyDamaged') >= 0 && u.damage === 0) {
+      return 'undamaged';
+    }
+    return null;
   };
 
   // Legal attack targets for a unit (sentinel/saboteur rules) — shared with the
