@@ -53,6 +53,9 @@
       // The log/history drawer (collapsed at the start of a game) and its controls.
       logDrawer: 'Battle log', logOpen: 'Log', logClose: 'Close',
       muteOn: 'Sound: on', muteOff: 'Sound: off',
+      // The battle-animation speed button and the skip hint on the input lock.
+      animFull: 'Animations: full', animQuick: 'Animations: quick', animOff: 'Animations: off',
+      animSkip: 'Click to skip', animShield: 'shield',
       // The title screen and its deck picker.
       gameTitle: 'Starbound Legions',
       gameTagline: 'Two fleets. One war. Only one base left standing.',

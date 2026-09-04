@@ -26,21 +26,34 @@
       seed: opts.seed || ('g' + Math.floor(Math.random() * 1e9)) });
     UI.aiDifficulty = opts.difficulty || 'mid';
     if (SB.endVideo) SB.endVideo.reset();
+    if (SB.anim) SB.anim.skip();
     UI.render();
     UI.maybeAI();
   };
 
   UI.doAction = function (action) {
+    if (SB.anim && SB.anim.busy()) return;   // the picture finishes (or is skipped) first
     UI.history.push(UI.state);
     const before = UI.state.log.length;
+    const prev = UI.state;
     UI.state = SB.apply(UI.state, action);
-    SB.sound && SB.sound.play(UI.state);
-    spotlightNewPlays(before);
-    UI.render();
-    UI.maybeAI();
+    settle(prev, before);
   };
 
+  // After an apply: sound, the played-card spotlight, then the battle animation
+  // (js/anim.js) plays on the OLD board — the redraw waits for it, so the player
+  // sees the shot land before the numbers change and the dead card leave.
+  function settle(prev, before) {
+    const steps = SB.anim ? SB.anim.plan(prev, UI.state, before, UI.humanSeat) : [];
+    const animated = !!(SB.anim && SB.anim.willAnimate(steps));
+    SB.sound && SB.sound.play(UI.state, animated);
+    spotlightNewPlays(before);
+    if (!animated) { UI.render(); UI.maybeAI(); return; }
+    SB.anim.run(steps, UI.state, UI.humanSeat, function () { UI.render(); UI.maybeAI(); });
+  }
+
   UI.undo = function () {
+    if (SB.anim) SB.anim.skip();
     if (SB.endVideo) SB.endVideo.reset();
     while (UI.history.length > 0) {
       const prev = UI.history.pop();
@@ -59,14 +72,16 @@
     UI.aiThinking = true;
     setTimeout(function () {
       UI.aiThinking = false;
+      if (SB.anim && SB.anim.busy()) { UI.maybeAI(); return; }   // wait its turn out
+      // The state may have changed hands while the timer ran (an undo, a new game):
+      // never choose a move for the human.
+      if (SB.isTerminal(UI.state) || whoActs(UI.state) === UI.humanSeat) return;
       const action = SB.ai.chooseAction(UI.state, UI.aiDifficulty);
       UI.history.push(UI.state);
       const before = UI.state.log.length;
+      const prev = UI.state;
       UI.state = SB.apply(UI.state, action);
-      SB.sound && SB.sound.play(UI.state);
-      spotlightNewPlays(before);
-      UI.render();
-      UI.maybeAI();
+      settle(prev, before);
     }, 450);
   };
 
@@ -218,6 +233,8 @@
   UI.render = function () {
     const s = UI.state;
     if (!s) return;
+    // Mid-animation the board is deliberately stale; the sequence redraws when done.
+    if (SB.anim && SB.anim.busy()) return;
     const acts = SB.isTerminal(s) ? [] : SB.legalActions(s);
     renderTurnBar(s, acts);
     renderBase($('enemy-base'), s, SB.other(UI.humanSeat), acts);

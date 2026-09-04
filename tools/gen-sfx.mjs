@@ -16,9 +16,13 @@ const key = flag('--key') || process.env.ELEVENLABS_KEY ||
 // SFX models do ambience and effects, not music (CARD-GAME-LESSONS §5).
 const SFX = {
   play:    ['soft sci-fi holographic card materialize whoosh, short, clean', 0.8],
-  attack:  ['aggressive sci-fi engine lunge whoosh with metallic edge, short', 0.8],
-  hit:     ['punchy sci-fi energy impact thud, arcade game hit, very short', 0.6],
-  destroy: ['small sci-fi explosion with metallic debris, short game sound', 1.0],
+  // Battle animation clips (js/anim.js fires these at the moment of the picture).
+  laser:    ['single sci-fi blaster laser bolt firing, sharp pew with a short energy tail, very short', 0.7],
+  laserHit: ['sci-fi laser bolt striking metal armor plating, sizzling energy impact with a crack, very short', 0.7],
+  lunge:    ['fast aggressive melee lunge whoosh, a heavy body rushing forward through air, short', 0.6],
+  slash:    ['energy blade slash cutting through metal with a bright crackling hit, very short', 0.7],
+  baseHit:  ['heavy explosive impact against a fortified structure, deep boom with rumbling debris, short', 1.2],
+  defeat:   ['small sci-fi explosion crumbling into sparks with a descending whoosh as it shrinks away, short', 1.2],
   shield:  ['crystalline energy shield shimmer pop, bright, very short', 0.6],
   heal:    ['warm ascending healing chime sparkle, gentle, short', 0.8],
   buff:    ['rising power-up synth glimmer, positive, very short', 0.6],

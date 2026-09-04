@@ -690,7 +690,7 @@
       (state.tempCombatMods || []).forEach(function (m) {
         if (m.vsBase && attacker.owner === SB.other(m.enemyOf)) basePower = Math.max(0, basePower + m.power);
       });
-      SB.damageBase(state, item.target.player, basePower, 'attack');
+      SB.damageBase(state, item.target.player, basePower, 'attack', attacker.uid);
       if (basePower > 0) {
         state.baseDamagersThisPhase = state.baseDamagersThisPhase || [];
         state.baseDamagersThisPhase.push(attacker.uid);
@@ -727,22 +727,22 @@
     delete attacker.defenderFirstNext;
     if (defenderFirst) {
       // The attacker lets the defender strike first (law-086 style).
-      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
-      if (SB.findUnit(state, attacker.uid)) SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
+      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid, combat: true });
+      if (SB.findUnit(state, attacker.uid)) SB.damageUnit(state, defender, power, { sourceUid: attacker.uid, combat: true });
     } else if (item.firstStrike || alwaysFirst) {
       // Attacker deals combat damage first; defender only retaliates if it lives.
-      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
+      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid, combat: true });
       if (SB.findUnit(state, defender.uid)) {
-        SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
+        SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid, combat: true });
       }
     } else {
       // Simultaneous: compute both, then apply both.
-      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
-      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
+      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid, combat: true });
+      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid, combat: true });
     }
     const defeated = !SB.findUnit(state, defender.uid);
     if (overwhelm && !defShielded && power > defHpLeft) {
-      SB.damageBase(state, defender.owner, power - defHpLeft, 'overwhelm');
+      SB.damageBase(state, defender.owner, power - defHpLeft, 'overwhelm', attacker.uid);
       state.baseDamagersThisPhase = state.baseDamagersThisPhase || [];
       state.baseDamagersThisPhase.push(attacker.uid);
     }

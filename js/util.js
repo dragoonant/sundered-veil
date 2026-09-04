@@ -53,7 +53,7 @@
   // Secondary actors get stamped too ('by' = the doer, 'to'/'a'/'b' = the other end),
   // so a line naming two units still names both after either has left the board.
   const LOG_UIDS = { uid: 'cardId', by: 'byCardId', to: 'toCardId', a: 'aCardId', b: 'bCardId',
-    attacker: 'attackerCardId' };
+    attacker: 'attackerCardId', source: 'sourceCardId' };
   SB.log = function (state, entry) {
     if (SB.findUnit) {
       for (const key in LOG_UIDS) {

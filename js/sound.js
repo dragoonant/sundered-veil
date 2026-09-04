@@ -20,6 +20,10 @@
   let lastLogLen = 0;
   let muted = false;
 
+  // Log sound tags the battle animation owns, and the clip each falls back to when
+  // the animation is off (the old attack/hit/destroy clips were retired for these).
+  const ANIM_OWNED = { attack: 'laser', hit: 'laserHit', destroy: 'defeat' };
+
   function clip(name) {
     if (!cache[name]) {
       const a = new Audio('sfx/' + name + '.mp3');
@@ -258,20 +262,28 @@
       if (muted) fadeOutCurrent(true);
       return muted;
     },
+    // One clip, now. js/anim.js calls this at the moment a shot lands.
+    sfx: function (name) {
+      if (muted) return;
+      try {
+        const a = clip(name).cloneNode();
+        a.volume = 0.5;
+        a.play().catch(function () { /* pre-interaction / missing file */ });
+      } catch (e) { /* no audio support */ }
+    },
     // Called by the UI after every apply: SFX for new log entries + music tier.
-    play: function (state) {
+    // `animated` = js/anim.js is about to draw this apply and will voice the battle
+    // tags itself when each picture happens, so they are left alone here.
+    play: function (state, animated) {
       const fresh = state.log.slice(lastLogLen);
       lastLogLen = state.log.length;
       if (!muted) {
         const seen = {};
         fresh.forEach(function (l) {
           if (!l.sound || seen[l.sound]) return; // one clip per type per action
+          if (animated && ANIM_OWNED[l.sound]) return;
           seen[l.sound] = true;
-          try {
-            const a = clip(l.sound).cloneNode();
-            a.volume = 0.5;
-            a.play().catch(function () { /* pre-interaction / missing file */ });
-          } catch (e) { /* no audio support */ }
+          SB.sound.sfx(ANIM_OWNED[l.sound] || l.sound);
         });
       }
       updateMusic(state);
