@@ -56,13 +56,14 @@
     // The power token is binary and gates whole abilities (ab.forceCost). The base
     // evaluator scored it at exactly zero, so a deck built on it paid to do nothing.
     force: 5,
-    // HP prices how hard a unit is to kill; for a unit that pays its controller when it
-    // dies, being killed is partly the point.
-    deathPayoff: 0.5,
-    // The same discount applied to the ENEMY's death-trigger units is a different claim:
-    // that the AI should be less interested in killing them. Held separately because the
-    // two are separately measurable, and the first gauntlet suggests they do not agree.
-    deathPayoffEnemy: 0.5,
+    // deathPayoff is OFF (1 = no discount). It was the most promising term in Phase 1
+    // and it lost every form of its gauntlet: symmetric 49.3%, own-side-only 49.1%,
+    // against 50.4% for the profile without it, 760 games each. The machinery stays
+    // because the weights are measurable and paysOnDeath() is correct; the claim that a
+    // unit which pays when it dies should be cheaper to lose is not supported at any
+    // magnitude tried. Do not re-enable it without a gauntlet that says otherwise.
+    deathPayoff: 1,
+    deathPayoffEnemy: 1,
   });
   const PROFILES = { competition: COMPETITION };
   // Exposed so a measurement run can vary ONE weight without editing this file, the
@@ -208,8 +209,13 @@
       const wasted = wastedPlayPenalty(state, after, a);
       let v = base - wasted;
       let swing = 0;
+      if (difficulty === 'competition') {
+        // Replaces the one-reply swing penalty below: the exchange prices the reply AND
+        // my answer to it, which a swing term never could.
+        v = exchangeValue(after, me, 3) - wasted;
+      }
       // Hard: one-ply min over the opponent's best reply.
-      if (deep && !SB.isTerminal(after) && after.queue.length === 0 &&
+      if (difficulty === 'hard' && !SB.isTerminal(after) && after.queue.length === 0 &&
           after.phase === 'action' && after.active !== me) {
         swing = bestReplySwing(after, SB.other(me));
         v = v - 0.5 * swing;
@@ -222,6 +228,45 @@
     return best;
     } finally { P = prevProfile; }
   };
+
+  // The best `width` actions for a seat, settled, judged from that seat.
+  function topActions(state, who, width) {
+    const scored = SB.legalActions(state).slice(0, 16).map(function (a) {
+      const after = settle(SB.apply(state, a));
+      return { state: after, v: AI.evaluate(after, who) };
+    });
+    scored.sort(function (x, y) { return y.v - x.v; });
+    return scored.slice(0, width);
+  }
+
+  // Value after one full exchange: their best reply, then my best answer to it. The
+  // engine alternates strictly (js/engine.js advanceTurn), so a setup-then-payoff line —
+  // satisfy a gate, then use it — cannot be seen at one ply: the opponent always acts in
+  // between. Quiet nodes (queue open, phase over, decided) score where they stand.
+  function exchangeValue(state, me, width) {
+    if (SB.isTerminal(state) || state.phase !== 'action' || state.queue.length) {
+      return AI.evaluate(state, me);
+    }
+    if (state.active === me) {                     // they have passed; I keep acting
+      const mine = topActions(state, me, 1);
+      return mine.length ? mine[0].v : AI.evaluate(state, me);
+    }
+    const replies = topActions(state, SB.other(me), width);
+    if (!replies.length) return AI.evaluate(state, me);
+    let worst = Infinity;
+    replies.forEach(function (r) {
+      let v;
+      if (!SB.isTerminal(r.state) && r.state.phase === 'action' && !r.state.queue.length &&
+          r.state.active === me) {
+        const answer = topActions(r.state, me, 1);
+        v = answer.length ? answer[0].v : AI.evaluate(r.state, me);
+      } else {
+        v = AI.evaluate(r.state, me);
+      }
+      if (v < worst) worst = v;                    // they choose the reply that hurts most
+    });
+    return worst;
+  }
 
   function bestReplySwing(state, opp) {
     const acts = SB.legalActions(state);

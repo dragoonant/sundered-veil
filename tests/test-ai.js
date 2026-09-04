@@ -111,10 +111,13 @@
   });
 
   // ---- what a position is made of besides bodies -----------------------------
-  T.add('ai: a unit that pays when it dies is cheaper to lose than one that does not', function () {
-    // fx-martyr and fx-grunt are both 2/2; only the martyr draws its owner a card when
-    // it is defeated. Losing it should cost less — that is what lets the AI make the
-    // trades a death-trigger deck is built on.
+  T.add('ai: the death-payoff machinery works, and is switched off on purpose', function () {
+    // deathPayoff lost every gauntlet it was given (49.3% symmetric, 49.1% own-side,
+    // against 50.4% without it) and is set to 1 in the profile. The wiring stays because
+    // it is correct and measurable; this test pins the mechanism WITHOUT endorsing the
+    // term, so re-enabling it is a one-number change with a working test behind it.
+    const prof = SB.ai.profiles.competition;
+    T.eq(prof.deathPayoff, 1, 'the term is off by default — see docs/ai.md');
     function costOfLosing(cardId) {
       const s = T.game('fixtureA', 'fixtureB', 'ai-death-' + cardId);
       const u = T.putOnBoard(s, 0, cardId);
@@ -124,8 +127,13 @@
       without[arena] = without[arena].filter(function (x) { return x.uid !== u.uid; });
       return withIt - SB.ai.evaluate(without, 0, 'competition');
     }
-    T.ok(costOfLosing('fx-martyr') < costOfLosing('fx-grunt'),
-      'the martyr is the cheaper of two 2/2s to lose');
+    T.eq(costOfLosing('fx-martyr').toFixed(2), costOfLosing('fx-grunt').toFixed(2),
+      'off: the two 2/2s cost the same to lose');
+    prof.deathPayoff = 0.5;
+    try {
+      T.ok(costOfLosing('fx-martyr') < costOfLosing('fx-grunt'),
+        'on: the one that draws a card when it dies is cheaper to lose');
+    } finally { prof.deathPayoff = 1; }
   });
 
   T.add('ai: the force token and credits are worth something', function () {
