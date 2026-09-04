@@ -474,8 +474,21 @@ their reply but never my answer to it, and the answer is the whole point of a se
 No weight can price what the search cannot reach — which is also, in hindsight, why
 four carefully argued terms measured at nothing.
 
-Width is a profile weight (`exchangeWidth`, 0 = off for base difficulties). The curve
-either side of 3 is being measured rather than assumed.
+Width is a profile weight (`exchangeWidth`, 0 = off for base difficulties), and the
+curve is steep:
+
+```
+exchangeWidth   vs hard   runtime
+      1          52.6%     4623s
+      3          62.1%     6073s
+      5          (running)
+```
+
+Weighing only the opponent's single best reply captures barely a third of the gain, so
+the breadth of the minimax is doing real work and not merely the extra ply. Note this
+also means the search's value depends on `AI.evaluate` ranking the opponent's options
+sensibly — the weights that bought no winrate on their own are still what makes the
+search's pruning honest.
 
 ### Checked and NOT a defect: initiative timing
 
