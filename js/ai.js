@@ -33,6 +33,7 @@
     force: 0,
     deathPayoff: 1,
     deathPayoffEnemy: 1,
+    exchangeWidth: 0,      // 0 = no exchange search (base difficulties keep one ply)
     initiative: 6,         // acting first next round
     leaderDeployed: 10,    // a leader unit is a strong body with upside
     // Penalties (policy that position value can't express):
@@ -64,6 +65,10 @@
     // magnitude tried. Do not re-enable it without a gauntlet that says otherwise.
     deathPayoff: 1,
     deathPayoffEnemy: 1,
+    // How many of the opponent's replies to weigh in the exchange. 3 measured 62.1%
+    // against hard over 760 games; the shape of the curve either side of it is being
+    // measured (--weights exchangeWidth=N).
+    exchangeWidth: 3,
   });
   const PROFILES = { competition: COMPETITION };
   // Exposed so a measurement run can vary ONE weight without editing this file, the
@@ -209,10 +214,10 @@
       const wasted = wastedPlayPenalty(state, after, a);
       let v = base - wasted;
       let swing = 0;
-      if (difficulty === 'competition') {
+      if (P.exchangeWidth > 0) {
         // Replaces the one-reply swing penalty below: the exchange prices the reply AND
         // my answer to it, which a swing term never could.
-        v = exchangeValue(after, me, 3) - wasted;
+        v = exchangeValue(after, me, P.exchangeWidth) - wasted;
       }
       // Hard: one-ply min over the opponent's best reply.
       if (difficulty === 'hard' && !SB.isTerminal(after) && after.queue.length === 0 &&
