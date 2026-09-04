@@ -554,9 +554,12 @@
         unit.shields += 1;
         SB.log(state, { type: 'shield', uid: unit.uid, sound: 'shield' });
       }
+      // Ambush: may ready and attack immediately. It triggers on the play, so it is
+      // batched with the leader's when-you-play-a-unit offers below and the player
+      // chooses which of them resolves first.
+      const simul = [];
       if (SB.hasKeyword(state, unit, 'ambush')) {
-        // Ambush: may ready and attack immediately. Queue the option as a choice.
-        state.queue.push({ step: 'effect', controller: me, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
+        simul.push({ step: 'effect', controller: me, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
           op: { op: 'ambushAttack', target: null } });
       }
       SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid, paidCost: cost });
@@ -576,7 +579,8 @@
         if (obs.uid === unit.uid) return;
         SB.fireTriggers(state, 'onUnitPlayed', obs, { sourceUid: obs.uid, playedUid: unit.uid, playedCardId: unit.cardId });
       });
-      fireLeaderTrigger(state, me, 'onUnitPlayed', { playedUid: unit.uid, playedCardId: unit.cardId });
+      fireLeaderTrigger(state, me, 'onUnitPlayed', { playedUid: unit.uid, playedCardId: unit.cardId }, simul);
+      queueSimultaneous(state, me, simul);
     } else if (card.type === 'event') {
       p.discard.push(inst);
       p.eventsThisRound = (p.eventsThisRound || 0) + 1;
@@ -598,12 +602,15 @@
       target.upgrades.push(inst);
       SB.log(state, { type: 'attached', uid: target.uid, cardId: inst.cardId, sound: 'attach' });
       // Upgrade abilities that trigger when the upgrade itself is played resolve
-      // in the context of the bearer.
+      // in the context of the bearer. This is the ONLY place they fire: the upgrade
+      // is already on the bearer, so SB.fireTriggers(bearer, 'onPlay') would run them
+      // a second time — and would re-run the BEARER's own when-played abilities on
+      // top, neither of which is a thing that happened.
       (card.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'onPlay') return;
-        SB.queueEffects(state, me, ab.effects, { sourceUid: target.uid, cardId: inst.cardId, condition: ab.condition });
+        SB.queueEffects(state, me, ab.effects, { sourceUid: target.uid, cardId: inst.cardId,
+          upgradeCardId: inst.cardId, condition: ab.condition });
       });
-      SB.fireTriggers(state, 'onPlay', target, { sourceUid: target.uid, upgradeCardId: inst.cardId });
       SB.allUnits(state, me).forEach(function (obs) {
         SB.fireTriggers(state, 'onUpgradePlayed', obs, { sourceUid: obs.uid, upgradeCardId: inst.cardId });
       });
@@ -807,16 +814,28 @@
   // Undeployed-leader triggered abilities (e.g. "When you play an upgrade").
   // exhaustCost:true abilities are offered as optional (pay by exhausting leader).
   SB.fireLeaderTrigger = fireLeaderTrigger;
-  function fireLeaderTrigger(state, playerIdx, trigger, ctx) {
+  // sink, when given, collects the offers instead of queueing them, so the caller can
+  // batch them with other triggers from the same event and let the player order them.
+  function fireLeaderTrigger(state, playerIdx, trigger, ctx, sink) {
     const p = state.players[playerIdx];
     if (p.leader.deployed) return;
     const abilities = SB.card(p.leader.cardId).leaderSide.abilities || [];
     abilities.forEach(function (ab, ai) {
       if (ab.trigger !== trigger) return;
       if (ab.exhaustCost && p.leader.exhausted) return;
-      state.queue.push({ step: 'leaderTriggerOffer', player: playerIdx, abilityIndex: ai,
-        exhaustCost: !!ab.exhaustCost, ctx: ctx || {} });
+      const offer = { step: 'leaderTriggerOffer', player: playerIdx, abilityIndex: ai,
+        exhaustCost: !!ab.exhaustCost, ctx: ctx || {} };
+      if (sink) sink.push(offer); else state.queue.push(offer);
     });
+  }
+
+  // Abilities triggered by the same event resolve in the order their controller
+  // chooses. Ambush is a when-played trigger, so a leader's "when you play a unit"
+  // ability may be taken FIRST — buffing the unit before its ambush attack.
+  function queueSimultaneous(state, playerIdx, items) {
+    if (items.length === 0) return;
+    if (items.length === 1) { state.queue.push(items[0]); return; }
+    state.queue.push({ step: 'triggerOrder', player: playerIdx, items: items });
   }
 
   SB.queueSteps = SB.queueSteps || {};
@@ -888,6 +907,23 @@
     },
   };
 
+  // The controller orders their own simultaneous triggers: pick one to resolve now;
+  // the rest stay batched behind it until only one is left.
+  SB.queueSteps.triggerOrder = {
+    actions: function (state, itemStep) {
+      return itemStep.items.map(function (_, i) {
+        return { type: 'orderTrigger', player: itemStep.player, index: i };
+      });
+    },
+    apply: function (state, itemStep, action) {
+      const chosen = itemStep.items[action.index];
+      const rest = itemStep.items.filter(function (_, i) { return i !== action.index; });
+      const tail = rest.length > 1
+        ? [{ step: 'triggerOrder', player: itemStep.player, items: rest }] : rest;
+      state.queue = [chosen].concat(tail, state.queue);
+    },
+  };
+
   // ---- queue driver -------------------------------------------------------
 
   function processQueue(state) {
@@ -938,6 +974,9 @@
       }
       if (item.step === 'effect') {
         SB.drainQueue(state);
+        // The drain hands an ambush item back untouched: loop so the branch above
+        // builds its attack candidates.
+        if (state.queue.length > 0 && state.queue[0].op && state.queue[0].op.op === 'ambushAttack') continue;
         if (state.queue.length > 0 && state.queue[0].candidates) return;
         if (state.queue.length > 0 && state.queue[0].step !== 'effect') continue;
         if (state.queue.length > 0) return; // drain stopped on a choice

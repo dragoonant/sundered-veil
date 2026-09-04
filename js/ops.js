@@ -398,12 +398,18 @@
     });
   };
 
-  // Spend resources as an effect cost (assumes affordability was checked upstream;
-  // fizzles otherwise).
+  // Spend resources as an effect cost. Affordability is normally settled upstream
+  // (binaryPick will not offer a branch that cannot be paid for), but if an unpayable
+  // cost is reached anyway, the REST of its invocation is dropped too — the effects
+  // this was buying must never resolve for free.
   O.spendResources = function (state, item) {
     const res = state.players[item.controller].resources;
     const ready = res.filter(function (x) { return !x.exhausted; }).length;
-    if (ready < item.op.amount) { SB.log(state, { type: 'fizzle', why: 'cantPay', fizzled: true }); return; }
+    if (ready < item.op.amount) {
+      SB.log(state, { type: 'fizzle', why: 'cantPay', cardId: item.ctx && item.ctx.cardId, fizzled: true });
+      SB.cancelInvocation(state, item.ctx);
+      return;
+    }
     let left = item.op.amount;
     for (let i = 0; i < res.length && left > 0; i++) {
       if (!res[i].exhausted) { res[i].exhausted = true; left--; }
@@ -1713,10 +1719,23 @@
     },
   };
 
+  // What branch 'a' charges its controller up front. Card data usually says so with
+  // an aGate {if:'canPay'}, but the cost is right there in the effects, so read it and
+  // enforce it either way — a missing gate must not hand out a paid effect for free.
+  SB.branchCost = function (branch) {
+    return ((branch && branch.effects) || []).reduce(function (n, e) {
+      return n + (e.op === 'spendResources' ? (e.amount || 0) : 0);
+    }, 0);
+  };
+  SB.branchAffordable = function (state, player, branch) {
+    return SB.readyResources(state, player) >= SB.branchCost(branch);
+  };
+
   SB.queueSteps.binaryPick = {
     actions: function (state, itemStep) {
       const acts = [];
-      if (!itemStep.aGate || SB.checkCondition(state, itemStep.controller, itemStep.aGate, itemStep.ctx || {})) {
+      if ((!itemStep.aGate || SB.checkCondition(state, itemStep.controller, itemStep.aGate, itemStep.ctx || {})) &&
+          SB.branchAffordable(state, itemStep.controller, itemStep.a)) {
         acts.push({ type: 'binary', player: itemStep.player, pick: 'a' });
       }
       acts.push({ type: 'binary', player: itemStep.player, pick: 'b' });

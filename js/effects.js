@@ -249,6 +249,17 @@
     });
   };
 
+  // Drop every queued effect still belonging to this invocation. Used when a cost
+  // inside a branch cannot be paid: the effects it was buying must not resolve for
+  // free (see O.spendResources).
+  SB.cancelInvocation = function (state, ctx) {
+    const inv = ctx && ctx.inv;
+    if (inv == null) return;
+    state.queue = state.queue.filter(function (q) {
+      return !(q.step === 'effect' && q.ctx && q.ctx.inv === inv);
+    });
+  };
+
   SB.queueEffects = function (state, controller, effects, ctx) {
     // Insert at the FRONT in order: effects of the newest trigger resolve before
     // previously queued items (nested-resolution ordering). Each invocation gets an
@@ -688,6 +699,10 @@
       if (item.candidates) return; // waiting on a choice
 
       if (item.step !== 'effect') return; // setup/combat steps handled by engine
+      // Ambush is an effect item, but only the engine's queue driver knows how to
+      // offer it (it builds the attack candidates). Hand it back rather than
+      // running its no-op handler and swallowing the attack.
+      if (item.op && item.op.op === 'ambushAttack') return;
 
       const op = item.op;
       if (item.ctx && item.ctx.condition &&

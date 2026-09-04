@@ -609,6 +609,17 @@
     deployLeaderPilot: 1, leaderAction: 1, resourceCard: 1, choose: 1,
     unitAction: 1, baseEpic: 1, smuggle: 1 };
 
+  // One line naming a pending trigger, for the resolve-order buttons.
+  function triggerLabel(s, item) {
+    if (item.step === 'effect' && item.op && item.op.op === 'ambushAttack') {
+      return SB.names.keywords.ambush + ' (' + unitName(s, item.ctx.sourceUid) + ' attacks)';
+    }
+    if (item.step === 'leaderTriggerOffer') {
+      return SB.names.card(s.players[item.player].leader.cardId) + "'s ability";
+    }
+    return SB.targetPrompt ? SB.targetPrompt(s, item) : item.step;
+  }
+
   function actionLabel(s, a) {
     const cardName = function (id) { return SB.names.card(id); };
     switch (a.type) {
@@ -638,6 +649,11 @@
       case 'plotPlay': return a.resourceIndex === -1 ? SB.names.ui.decline : SB.names.keywords.plot + ': ' + cardName(a.cardId);
       case 'plotAttach': return 'Attach to: ' + unitName(s, a.uid);
       case 'leaderTrigger': return a.use ? SB.names.ui.leaderAbility : SB.names.ui.decline;
+      case 'orderTrigger': {
+        const it = s.queue[0] || {};
+        const sub = (it.items || [])[a.index] || {};
+        return 'First: ' + triggerLabel(s, sub);
+      }
       case 'massExhaust': case 'budgetExhaust': return a.uid == null ? 'Stop' : 'Exhaust: ' + unitName(s, a.uid);
       case 'massAttackChoose': case 'supportChoose': return a.uid == null ? 'Stop' : 'Attack with: ' + unitName(s, a.uid);
       case 'defeatOwn': return 'Defeat: ' + unitName(s, a.uid);

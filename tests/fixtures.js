@@ -40,6 +40,11 @@
     'fx-leaderB': { id: 'fx-leaderB', type: 'leader', aspects: ['aggression', 'villainy'], deployCost: 5,
       leaderSide: { abilities: [{ trigger: 'action', cost: 0, effects: [{ op: 'damage', amount: 1, target: { who: 'enemy', what: 'unit', optional: true } }] }] },
       deployedSide: { arena: 'ground', power: 5, hp: 6, keywords: [{ k: 'raid', n: 1 }] } },
+    // A leader whose "when you play a unit" ability competes with Ambush for order.
+    'fx-leaderC': { id: 'fx-leaderC', type: 'leader', aspects: ['command'], deployCost: 5,
+      leaderSide: { abilities: [{ trigger: 'onUnitPlayed', exhaustCost: true,
+        effects: [{ op: 'experience', amount: 1, target: { who: 'friendly', what: 'unit' } }] }] },
+      deployedSide: { arena: 'ground', power: 4, hp: 7, keywords: [] } },
     'fx-baseA': { id: 'fx-baseA', type: 'base', hp: 30, aspects: ['aggression'] },
     'fx-baseB': { id: 'fx-baseB', type: 'base', hp: 30, aspects: ['vigilance'] },
   };

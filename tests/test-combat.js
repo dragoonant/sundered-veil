@@ -149,6 +149,44 @@
     T.ok(SB.findUnit(s, g.uid), 'no attack happened');
   });
 
+  T.add('ambush + leader trigger: the player picks which resolves first', function () {
+    function setup(seed) {
+      let s = duel(seed);
+      const me = s.active;
+      s.players[me].leader.cardId = 'fx-leaderC';
+      const g = T.putOnBoard(s, SB.other(me), 'fx-gritty'); // 2/6, survives either way
+      T.putInHand(s, me, 'fx-ambusher');                    // 3/3 ambush
+      T.giveResources(s, me, 5);
+      s = T.act(s, { type: 'playCard', cardId: 'fx-ambusher' });
+      return { s: s, me: me, g: g };
+    }
+    function pick(s, step) {
+      const idx = s.queue[0].items.findIndex(function (it) {
+        return step === 'ambush' ? (it.op && it.op.op === 'ambushAttack') : it.step === step;
+      });
+      return T.act(s, { type: 'orderTrigger', index: idx });
+    }
+    function finish(s) {
+      // Drain whatever choices remain, always taking the first offer (attack / use).
+      for (let i = 0; i < 8 && s.queue.length; i++) {
+        const acts = SB.legalActions(s);
+        if (!acts.length) break;
+        s = SB.apply(s, acts[0]);
+      }
+      return s;
+    }
+
+    let a = setup('ord1');
+    T.ok(a.s.queue[0].step === 'triggerOrder', 'order choice offered');
+    T.eq(SB.legalActions(a.s).length, 2, 'both orders legal');
+    let s1 = finish(pick(a.s, 'leaderTriggerOffer'));
+    T.eq(SB.findUnit(s1, a.g.uid).damage, 4, 'leader first: buffed 3/3 hits for 4');
+
+    let b = setup('ord2');
+    let s2 = finish(pick(b.s, 'ambush'));
+    T.eq(SB.findUnit(s2, b.g.uid).damage, 3, 'ambush first: hits for 3');
+  });
+
   T.add('onPlay damage trigger targets enemy unit; fizzles with none', function () {
     let s = duel('trig');
     const me = s.active, foe = SB.other(me);

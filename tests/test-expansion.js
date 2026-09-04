@@ -17,6 +17,13 @@
     return s;
   }
   function rich(s, who) { T.giveResources(s, who, 14); return s; }
+  // Top the bank up to EXACTLY n ready resources: T.game() already deals a starting
+  // few, so an affordability test cannot just hand over a count and hope.
+  function fund(s, who, n) {
+    const have = SB.readyResources(s, who);
+    if (n > have) T.giveResources(s, who, n - have);
+    return s;
+  }
   function play(s, who, cardId, extra) {
     s.active = who; // a play passes the turn; tests string several plays by one seat
     const inst = T.putInHand(s, who, cardId);
@@ -267,6 +274,96 @@
     });
     T.ok(n > 1000, 'walked the lists (' + n + ' slots)');
   });
+  T.add('expansion: a paid branch is not offered when the cost cannot be met', function () {
+    // jtl-096 costs 3 and its "when played" branch charges 2 more. Played on exactly
+    // 3 resources there is nothing left to pay with, so only the free branch stands.
+    let s = T.game();
+    fund(s, 0, SB.card('jtl-096').cost);   // exactly the card, nothing spare
+    s = play(s, 0, 'jtl-096');
+    T.eq(SB.readyResources(s, 0), 0, 'the play emptied the bank');
+    T.eq(s.queue[0].step, 'binaryPick', 'the choice is pending');
+    const acts = SB.legalActions(s);
+    T.eq(acts.length, 1, 'one branch only');
+    T.eq(acts[0].pick, 'b', 'and it is the branch that costs nothing');
+    s = SB.apply(s, acts[0]);
+    const u = unitsOf(s, 0, 'jtl-096')[0];
+    T.ok(u && SB.arenaOf(s, u) === 'space', 'it never moved arena');
+    T.eq(u.experience, 0, 'and gained nothing it did not pay for');
+  });
+
+  T.add('expansion: with the resources spare, the paid branch is offered and charged', function () {
+    let s = T.game();
+    fund(s, 0, SB.card('jtl-096').cost + 2);  // the card, plus the branch's price
+    s = play(s, 0, 'jtl-096');
+    const acts = SB.legalActions(s);
+    T.eq(acts.length, 2, 'both branches stand');
+    s = drive(SB.apply(s, acts.find(function (a) { return a.pick === 'a'; })));
+    const u = unitsOf(s, 0, 'jtl-096')[0];
+    T.eq(SB.readyResources(s, 0), 0, 'paid 3 for the card and 2 for the branch');
+    T.eq(SB.arenaOf(s, u), 'ground', 'moved arena');
+    T.eq(u.experience, 2, 'and took its two experience');
+  });
+
+  T.add('expansion: an unpayable cost drops the effects it was buying', function () {
+    // The guard above keeps this off the table in play, so pin the last line of
+    // defence directly: a cost that cannot be met takes its own invocation with it
+    // rather than fizzling alone and letting the rest resolve for free.
+    let s = T.game();
+    const u = T.putOnBoard(s, 0, 'fx-grunt');
+    s.players[0].resources.forEach(function (r) { r.exhausted = true; });
+    SB.queueEffects(s, 0, [
+      { op: 'spendResources', amount: 2 },
+      { op: 'experience', amount: 2, target: { self: true } },
+    ], { sourceUid: u.uid, cardId: 'fx-grunt' });
+    SB.drainQueue(s);
+    T.eq(SB.findUnit(s, u.uid).experience, 0, 'the effect behind the cost never ran');
+    T.ok(s.log.some(function (l) { return l.why === 'cantPay'; }), 'and the log says why');
+  });
+
+  T.add("expansion: an upgrade's when-played ability resolves once, not twice", function () {
+    // lof-091 deals damage equal to its bearer's power, itself included. On a 2-power
+    // bearer that is 4 — once. It used to fire twice, because the upgrade was already
+    // attached when the bearer's own triggers were fired.
+    let s = rich(T.game(), 0);
+    const mine = T.putOnBoard(s, 0, 'fx-grunt');      // 2 power, 4 with the upgrade
+    const foe = T.putOnBoard(s, 1, 'fx-gritty');      // 2/6: survives 4, dies to 8
+    s = play(s, 0, 'lof-091', { attachTo: mine.uid });
+    s = drive(s);
+    const hit = SB.findUnit(s, foe.uid);
+    T.ok(hit, 'the target survived a single hit');
+    T.eq(hit.damage, 4, "took the bearer's power exactly once");
+    T.eq(s.log.filter(function (l) { return l.type === 'unitDamage' && l.uid === foe.uid; }).length, 1,
+      'and the log records one hit');
+  });
+
+  T.add("expansion: attaching an upgrade does not re-fire the bearer's own play ability", function () {
+    // fx-sniper deals 2 when IT is played. Putting an upgrade on it later is not a
+    // second play of the sniper.
+    let s = rich(T.game(), 0);
+    const foe = T.putOnBoard(s, 1, 'fx-gritty');
+    s = play(s, 0, 'fx-sniper');
+    s = drive(s);
+    const after = SB.findUnit(s, foe.uid).damage;
+    const sniper = unitsOf(s, 0, 'fx-sniper')[0];
+    s = play(s, 0, 'fx-blade', { attachTo: sniper.uid });
+    s = drive(s);
+    T.eq(SB.findUnit(s, foe.uid).damage, after, 'the sniper did not shoot again');
+  });
+
+  T.add('expansion: an upgrade that bounces the OTHER upgrades leaves itself alone', function () {
+    // ash-199 needs to know which upgrade it is; it learns that from its own play ctx,
+    // which the duplicate trigger path used to be the only source of.
+    let s = rich(T.game(), 0);
+    const mine = T.putOnBoard(s, 0, 'fx-grunt');
+    s = play(s, 0, 'fx-blade', { attachTo: mine.uid });
+    s = drive(s);
+    s = play(s, 0, 'ash-199', { attachTo: mine.uid });
+    s = drive(s);
+    const worn = SB.findUnit(s, mine.uid).upgrades.map(function (i) { return i.cardId; });
+    T.eq(worn.join(','), 'ash-199', 'it stayed and the other one went');
+    T.ok(s.players[0].hand.some(function (i) { return i.cardId === 'fx-blade'; }), 'the other one is back in hand');
+  });
+
   T.add("expansion: the opponent, not the hand owner, picks the card discarded by ash-220", function () {
     let s = rich(T.game(), 1);
     T.putInHand(s, 0, "sor-045");
