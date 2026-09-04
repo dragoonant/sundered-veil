@@ -341,6 +341,51 @@ attackOnlyDamaged          1              1/20               2
 Only `deathPayoff` can move a matrix. Currency is judged on deck-c07 and deck-c11
 specifically, both currently piloted worse than random.
 
+### Gauntlet 1 — the four terms together: 49.3% of 760 games
+
+A coin flip (SE ~1.8%), so the bundle is not an improvement. But it is not flat either.
+Comparing each deck's gauntlet winrate to its own matrix winrate — where both seats
+played hard, so deck strength cancels — the terms sort the field almost perfectly by how
+well the AI played it BEFORE:
+
+```
+helped                          hurt
+Zhael's Misfortune  +15.8       Tessa's Trust        -23.7
+Dray's Audit         +9.2       Zhal's Coven          -9.2
+Kresh's Achievement  +7.9       Marrow's Manhunt      -6.6
+Greeve's Favor       +6.6       Forgemother's Steel   -5.3
+                    ... 9 helped, 11 hurt, mean -0.65
+```
+
+Three of the four decks the AI played worst improved sharply. The cost landed on decks it
+already piloted well. That is a term right in kind and wrong in magnitude — or one term in
+the bundle pulling the other way.
+
+**Which term, deduced before measuring:** `deck-c03` runs no force, no credits and no
+`attackOnlyDamaged` card, so of the four terms only `deathPayoff` can touch it. The
+-23.7 is `deathPayoff` alone. And `deck-c12` (+15.8) is likewise a deathPayoff-only
+deck. One term produces both the largest gain and the largest loss.
+
+Deck composition says why they differ:
+
+```
+deck        units   whenDefeated copies   share   payoffs
+deck-c12      47            19             40%    buffTemp, draw, damage, tokens
+deck-c13      42            10             24%    binaryChoice, draw, advantage
+deck-c03      52             3              6%    searchDeck
+deck-c01      52             3              6%    heal
+```
+
+Three cards cannot cost 23.7 points, so the damage is not on `deck-c03`'s own side of
+the board. **The term is symmetric**: it discounts the HP of the ENEMY's death-trigger
+units too, which says "be less interested in killing them". Against a field averaging six
+such cards per deck, that is an under-removal bias running all game, and it swamps the
+handful of times `deck-c03` benefits from its own three.
+
+The two halves are separate claims and only one of them looks defensible. Split into
+`deathPayoff` (my units — I should trade them more freely) and `deathPayoffEnemy`
+(their units — should I really want to kill them less?), so each can be measured alone.
+
 ### Checked and NOT a defect: initiative timing
 
 The fingerprint (tools/ai-fingerprint.mjs, new) showed the AI ending its round by claiming

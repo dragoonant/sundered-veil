@@ -32,6 +32,7 @@
     credit: 0,             // (competition prices these three; see PROFILES)
     force: 0,
     deathPayoff: 1,
+    deathPayoffEnemy: 1,
     initiative: 6,         // acting first next round
     leaderDeployed: 10,    // a leader unit is a strong body with upside
     // Penalties (policy that position value can't express):
@@ -56,9 +57,12 @@
     // evaluator scored it at exactly zero, so a deck built on it paid to do nothing.
     force: 5,
     // HP prices how hard a unit is to kill; for a unit that pays its controller when it
-    // dies, being killed is partly the point. Symmetric on purpose: it also stops the AI
-    // trading eagerly into a unit that rewards its owner for dying.
+    // dies, being killed is partly the point.
     deathPayoff: 0.5,
+    // The same discount applied to the ENEMY's death-trigger units is a different claim:
+    // that the AI should be less interested in killing them. Held separately because the
+    // two are separately measurable, and the first gauntlet suggests they do not agree.
+    deathPayoffEnemy: 0.5,
   });
   const PROFILES = { competition: COMPETITION };
   // Exposed so a measurement run can vary ONE weight without editing this file, the
@@ -77,7 +81,9 @@
     return (abs || []).some(function (ab) { return ab.trigger === 'whenDefeated'; });
   }
 
-  function sideValue(state, p) {
+  // mine: is this the side the evaluation is FOR? A unit that pays when it dies is worth
+  // holding differently from a unit whose death pays your opponent.
+  function sideValue(state, p, mine) {
     const pl = state.players[p];
     let v = 0;
     v -= state.players[SB.other(p)].base.damage * 0; // (enemy damage counted from their side)
@@ -90,7 +96,8 @@
       // and pricing it as a defect would talk the AI out of attacking at all.
       const blocked = SB.attackBlocked && SB.attackBlocked(state, u);
       const powerWorth = P.unitPower * (blocked ? P.lockedPower : 1);
-      const hpWorth = P.unitHp * (paysOnDeath(state, u) ? P.deathPayoff : 1);
+      const hpWorth = P.unitHp *
+        (paysOnDeath(state, u) ? (mine ? P.deathPayoff : P.deathPayoffEnemy) : 1);
       v += P.unitOnBoard + SB.unitPower(state, u) * powerWorth +
         SB.unitRemainingHp(state, u) * hpWorth + u.shields * P.shield;
     });
@@ -115,10 +122,10 @@
 
   // difficulty is optional: callers inside a decision inherit the active profile.
   AI.evaluate = function (state, me, difficulty) {
-    if (difficulty == null) return sideValue(state, me) - sideValue(state, SB.other(me));
+    if (difficulty == null) return sideValue(state, me, true) - sideValue(state, SB.other(me), false);
     const prev = P;
     P = profileFor(difficulty);
-    try { return sideValue(state, me) - sideValue(state, SB.other(me)); }
+    try { return sideValue(state, me, true) - sideValue(state, SB.other(me), false); }
     finally { P = prev; }
   };
 
