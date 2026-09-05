@@ -211,7 +211,7 @@
     if (sel.maxCostRefMilled) {
       const costs = SB.efx(state, ctx).milledCosts || [];
       const c = costs.length ? costs[costs.length - 1] : null;
-      if (c == null || (SB.card(u.cardId).cost || 0) > c) return false;
+      if (c == null || SB.costOf(u.cardId) > c) return false;
     }
     if (sel.notCardIs && sel.notCardIs.indexOf(u.cardId) >= 0) return false;
     if (sel.arenaRef) {
@@ -291,7 +291,7 @@
     },
     savedMaxCost: function (state, c, cond, ctx) {
       const u = savedUnit(state, ctx, cond.name);
-      return !!u && (SB.card(u.cardId).cost || 0) <= cond.n;
+      return !!u && SB.costOf(u.cardId) <= cond.n;
     },
     creditsAtLeast: function (state, c, cond) { return (state.players[c].credits || 0) >= cond.n; },
     opponentHasCredits: function (state, c) { return (state.players[SB.other(c)].credits || 0) > 0; },
@@ -1356,7 +1356,7 @@
         const traits = SB.unitTraits(state, unit);
         const cands = SB.allUnits(state, unit.owner).filter(function (f) {
           return f.uid !== unit.uid && SB.unitTraits(state, f).some(function (t) { return traits.indexOf(t) >= 0; });
-        }).sort(function (a, b) { return (SB.card(a.cardId).cost || 0) - (SB.card(b.cardId).cost || 0); });
+        }).sort(function (a, b) { return SB.costOf(a.cardId) - SB.costOf(b.cardId); });
         if (cands.length) { SB.defeatUnit(state, cands[0], {}); SB.log(state, { type: 'damagePrevented', uid: unit.uid }); return; }
       }
     }

@@ -406,6 +406,52 @@
     T.ok(!s.players[1].leader.defeated, 'theirs untouched');
   });
 
+  // ---- a deployed leader costs its DEPLOY cost -------------------------------
+  // law-132 defeats the unit it hits only if that unit costs 3 or less. A leader card
+  // has no `cost` field at all, so the test read undefined, || 0 made it the cheapest
+  // thing on the board, and a 5-cost leader died to it.
+  function deployLeaderUnit(s, seat, leaderId) {
+    s.players[seat].leader.cardId = leaderId;
+    const u = SB.makeUnit(s, leaderId, seat);
+    u.exhausted = false;
+    s[SB.card(leaderId).deployedSide.arena || 'ground'].push(u);
+    s.players[seat].leader.deployed = true;
+    s.players[seat].leader.uid = u.uid;
+    return u;
+  }
+
+  T.add('expansion: a deployed leader is priced at its deploy cost, not at nothing', function () {
+    T.eq(SB.costOf('jtl-005'), 5, 'the leader costs its deploy cost');
+    T.eq(SB.costOf('fx-grunt'), SB.card('fx-grunt').cost, 'an ordinary unit is unchanged');
+  });
+
+  T.add('expansion: "defeat it if it costs 3 or less" does not defeat a 5-cost leader', function () {
+    let s = T.game();
+    s.active = 1; s.initiative = 1;
+    const lead = deployLeaderUnit(s, 0, 'jtl-005');
+    s.players[1].hand = [];
+    T.putInHand(s, 1, 'law-132');
+    T.giveResources(s, 1, 8);
+    s = T.act(s, { type: 'playCard', cardId: 'law-132' });
+    s = drive(s);
+    const still = SB.findUnit(s, lead.uid);
+    T.ok(still, 'the leader survived');
+    T.ok(still.abilitiesSuppressed, 'and still lost its abilities, which is the rest of the card');
+  });
+
+  T.add('expansion: ...but it still defeats a unit that really does cost 3 or less', function () {
+    let s = T.game();
+    s.active = 1; s.initiative = 1;
+    const cheap = T.putOnBoard(s, 0, 'fx-ambusher');   // cost 3
+    T.eq(SB.card('fx-ambusher').cost, 3, 'the fixture is the cost the test assumes');
+    s.players[1].hand = [];
+    T.putInHand(s, 1, 'law-132');
+    T.giveResources(s, 1, 8);
+    s = T.act(s, { type: 'playCard', cardId: 'law-132' });
+    s = drive(s);
+    T.ok(!SB.findUnit(s, cheap.uid), 'the 3-cost unit died');
+  });
+
   T.add("expansion: the opponent, not the hand owner, picks the card discarded by ash-220", function () {
     let s = rich(T.game(), 1);
     T.putInHand(s, 0, "sor-045");

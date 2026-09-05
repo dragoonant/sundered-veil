@@ -507,7 +507,7 @@
       if (!u || u.exhausted) return;
       u.exhausted = true;
       SB.log(state, { type: 'exhausted', uid: u.uid });
-      const rest = itemStep.budget - (SB.card(u.cardId).cost || 0);
+      const rest = itemStep.budget - SB.costOf(u.cardId);
       if (rest > 0) state.queue.unshift({ step: 'exhaustBudgetPick', player: itemStep.player, budget: rest });
     },
   };
@@ -703,7 +703,7 @@
       const a = mine.owner, b = theirs.owner;
       mine.owner = b; theirs.owner = a;
       SB.log(state, { type: 'controlExchanged', a: mine.uid, b: theirs.uid, notice: true });
-      const cm = SB.card(mine.cardId).cost || 0, ct = SB.card(theirs.cardId).cost || 0;
+      const cm = SB.costOf(mine.cardId), ct = SB.costOf(theirs.cardId);
       if (cm !== ct) {
         // Whoever received the cheaper unit gains the difference in credits.
         const receiverOfCheaper = cm < ct ? b : a;

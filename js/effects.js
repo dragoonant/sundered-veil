@@ -73,8 +73,8 @@
           const isPilot = SB.unitTraits(state, u).indexOf('tr30') >= 0;
           if (!isPilot && SB.pilotCount(state, u) === 0) return;
         }
-        if (sel.maxCost != null && SB.card(u.cardId).cost > sel.maxCost) return;
-        if (sel.minCost != null && SB.card(u.cardId).cost < sel.minCost) return;
+        if (sel.maxCost != null && SB.costOf(u.cardId) > sel.maxCost) return;
+        if (sel.minCost != null && SB.costOf(u.cardId) < sel.minCost) return;
         if (sel.minPower != null && SB.unitPower(state, u) < sel.minPower) return;
         if (sel.maxPower != null && SB.unitPower(state, u) > sel.maxPower) return;
         if (sel.maxCostRefPlayed) {
@@ -162,6 +162,18 @@
 
   // An upgrade belongs to whoever played it, which is not always the bearer's
   // controller (bounty upgrades go on enemy units). It returns to ITS owner.
+  // What a card in play COSTS, for every "costs N or less" test. A leader card carries
+  // deployCost and no `cost` at all, so reading .cost gave undefined -- which || 0 turns
+  // into the cheapest possible unit, and which comparisons silently pass either way
+  // (undefined > 3 is false). A 5-cost deployed leader was being defeated by an event
+  // that only kills units costing 3 or less. A leader unit's cost is its deploy cost.
+  SB.costOf = function (cardId) {
+    const c = SB.card(cardId);
+    if (c.cost != null) return c.cost;
+    if (c.deployCost != null) return c.deployCost;
+    return 0;
+  };
+
   SB.upgradeOwner = function (unit, inst) {
     return inst.owner != null ? inst.owner : unit.owner;
   };
