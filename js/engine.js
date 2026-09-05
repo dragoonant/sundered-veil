@@ -398,7 +398,9 @@
       const bearer = SB.findUnit(state, action.attachTo);
       expect(bearer && bearer.owner === me && !SB.hasPilot(state, bearer), action);
       p.leader.deployed = 'pilot';
-      const inst = { uid: state.nextUid++, cardId: p.leader.cardId, leaderPilot: true };
+      // owner is the player who DEPLOYED the leader. It is not implied by the bearer:
+      // control of the ship can change hands while the leader aboard it cannot.
+      const inst = { uid: state.nextUid++, cardId: p.leader.cardId, leaderPilot: true, owner: me };
       p.leader.uid = inst.uid;
       bearer.upgrades.push(inst);
       SB.log(state, { type: 'deployLeaderPilot', player: me, cardId: p.leader.cardId, uid: bearer.uid, sound: 'deploy' });
@@ -1090,9 +1092,7 @@
       u.upgrades.forEach(function (inst) {
         if (inst.leaderPilot) {
           // The bearer leaves play, so the leader-pilot upgrade is defeated with it.
-          const lp = state.players[u.owner].leader;
-          lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-          lp.defeated = true;
+          SB.sidelineLeaderPilot(state, u, inst);
         } else if (!SB.card(inst.cardId).token) state.players[original].discard.push(inst);
       });
       SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });

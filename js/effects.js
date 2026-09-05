@@ -166,6 +166,22 @@
     return inst.owner != null ? inst.owner : unit.owner;
   };
 
+  // A leader deployed as a pilot goes back to ITS OWN player's sideline, whoever happens
+  // to control the ship when it dies. Five call sites each read the bearer's controller
+  // instead, so seizing a unit carrying the enemy's leader and then killing it sidelined
+  // YOUR leader and marked it defeated — no redeploy for the rest of the game — while
+  // theirs stayed deployed on a unit that no longer existed. One helper now owns the rule.
+  // defeated: leader is out for the game (its bearer died) rather than merely benched.
+  // log: the callers that were silent stay silent.
+  SB.sidelineLeaderPilot = function (state, bearer, inst, opts) {
+    const who = SB.upgradeOwner(bearer, inst);
+    const lp = state.players[who].leader;
+    lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+    if (!opts || opts.defeated !== false) lp.defeated = true;
+    if (opts && opts.log) SB.log(state, { type: 'leaderReturned', player: who });
+    return lp;
+  };
+
   SB.defeatUnit = function (state, unit, ctx) {
     const arena = SB.arenaOf(state, unit);
     const list = state[arena];
@@ -190,10 +206,7 @@
     // Upgrades go to their owner's discard (tokens vanish; leader pilots flip back).
     unit.upgrades.forEach(function (inst) {
       if (inst.leaderPilot) {
-        const lp = state.players[unit.owner].leader;
-        lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-        lp.defeated = true; // defeated along with its bearer: no redeploy
-        SB.log(state, { type: 'leaderReturned', player: unit.owner });
+        SB.sidelineLeaderPilot(state, unit, inst, { log: true }); // no redeploy: it died aboard
       } else if (!SB.card(inst.cardId).token) {
         state.players[SB.upgradeOwner(unit, inst)].discard.push(inst);
       }
@@ -688,9 +701,7 @@
       u.upgrades.forEach(function (inst) {
         if (inst.leaderPilot) {
           // Bounced bearer: its upgrades are defeated, the leader pilot included.
-          const lp = state.players[u.owner].leader;
-          lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-          lp.defeated = true;
+          SB.sidelineLeaderPilot(state, u, inst);
         } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
       });
       SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });

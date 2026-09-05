@@ -900,8 +900,8 @@
     u.upgrades.slice().forEach(function (inst) {
       u.upgrades.splice(u.upgrades.indexOf(inst), 1);
       if (inst.leaderPilot) {
-        const lp = state.players[u.owner].leader;
-        lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+        // Benched, not defeated: the bearer survives, so the leader may deploy again.
+        SB.sidelineLeaderPilot(state, u, inst, { defeated: false });
       } else if (!SB.card(inst.cardId).token) state.players[SB.upgradeOwner(u, inst)].discard.push(inst);
     });
     SB.log(state, { type: 'upgradesDefeated', uid: u.uid, sound: 'destroy' });

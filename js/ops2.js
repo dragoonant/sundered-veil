@@ -1278,10 +1278,7 @@
     }
     bearer.upgrades.splice(i, 1);
     if (inst.leaderPilot) {
-      const lp = state.players[bearer.owner].leader;
-      lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-      if (why === 'defeated') lp.defeated = true;
-      SB.log(state, { type: 'leaderReturned', player: bearer.owner });
+      SB.sidelineLeaderPilot(state, bearer, inst, { defeated: why === 'defeated', log: true });
       return;
     }
     const owner = SB.upgradeOwner(bearer, inst);
