@@ -9,7 +9,7 @@
 //                      keywords, stats, front/back text are authoritative here)
 //   dotgg-cards.json   fallback for any card the swudb dump lacks
 //   decks.json         the 20 competitive lists (from the hub/melee scrape)
-//   trait-map.json     trait slug -> neutral id; rebuilt from data/source-local.js when
+//   trait-map.json     trait slug -> neutral id; rebuilt from data/names-source.js when
 //                      missing, extended here for new traits
 // Outputs:
 //   data/cards-<set>.js         new skeleton lines inserted before the closing "});"
@@ -48,10 +48,10 @@ const traitPath = join(SCRATCH, 'trait-map.json');
 let traitMap = {};
 if (existsSync(traitPath)) traitMap = JSON.parse(readFileSync(traitPath, 'utf8'));
 else {
-  // Rebuild from the local source-name file: its T map is id -> source trait name.
-  const sl = readFileSync(join(root, 'data', 'source-local.js'), 'utf8');
+  // Rebuild from the committed source-name file: its T map is id -> source trait name.
+  const sl = readFileSync(join(root, 'data', 'names-source.js'), 'utf8');
   const m = sl.match(/var T = \{([\s\S]*?)\};/);
-  if (!m) { console.error('no trait map and no T map in data/source-local.js'); process.exit(2); }
+  if (!m) { console.error('no trait map and no T map in data/names-source.js'); process.exit(2); }
   const T = JSON.parse('{' + m[1] + '}');
   for (const [id, name] of Object.entries(T)) traitMap[slug(name)] = id;
 }

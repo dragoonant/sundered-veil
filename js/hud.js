@@ -41,6 +41,15 @@
     b.textContent = m === 'off' ? SB.names.ui.animOff : (m === 'quick' ? SB.names.ui.animQuick : SB.names.ui.animFull);
   }
 
+  // Card names: printed (source pack) or the original theme. The button exists only
+  // when data/names-source.js loaded; without a pack there is nothing to switch to.
+  function syncNames() {
+    const b = $('names-btn');
+    if (!b) return;
+    b.hidden = !SB.names.hasSource();
+    b.textContent = SB.names.mode() === 'source' ? SB.names.ui.namesSource : SB.names.ui.namesOriginal;
+  }
+
   function syncMute() {
     const b = $('mute-btn');
     if (!b) return;
@@ -186,8 +195,13 @@
       $('mute-btn').onclick = function () { SB.sound.toggleMute(); syncMute(); };
       // Battle animations: full / quick / off, remembered across sessions (js/anim.js).
       $('anim-btn').onclick = function () { SB.anim.cycleMode(); syncAnim(); };
+      $('names-btn').onclick = function () {
+        SB.names.toggleMode(); syncNames();
+        if (SB.ui.state) SB.ui.render();     // every face, log line and prompt re-reads the names
+      };
       syncMute();
       syncAnim();
+      syncNames();
       setDrawer(false);
       // Esc closes whichever piece of chrome is in the way. The choice modal owns Esc
       // for its own peek (js/targeting.js), so it is checked first and left alone.

@@ -102,6 +102,7 @@
     wrap.appendChild(el('h1', 'title-name', SB.names.ui.gameTitle));
     wrap.appendChild(el('div', 'title-tagline', SB.names.ui.gameTagline));
     wrap.appendChild(el('div', 'title-hint', SB.names.ui.titleHint));
+    wrap.appendChild(el('div', 'title-disclaimer', SB.names.ui.disclaimer));
     return wrap;
   }
 

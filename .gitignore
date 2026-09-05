@@ -14,20 +14,25 @@ art-masters/*
 scratch/
 import-packets/
 
-# Local playtesting name/text override (tools/gen-source-names.mjs) — carries source
-# material display text; never commit, never deploy
-data/source-local.js
-
 # OS noise
 Thumbs.db
 desktop.ini
 
-# Generated assets stay out of the repo (regenerate via tools/gen-art.mjs, tools/gen-sfx.mjs)
-# art/cardback.webp is the exception, for the same reason as its master above:
-# no prompt produces it, so without it a fresh clone has no card back at all.
+# Generated assets SHIP with the repo: GitHub Pages serves the repo root as-is, so the
+# deployed game has exactly the art and sound that is committed. Only the delivery
+# formats are tracked (WebP, the two shrunk end-of-match MP4s, MP3). Masters, PNG
+# intermediates, contact sheets, test renders and logs stay out; regenerate via
+# tools/gen-art.mjs, tools/gen-fx.mjs, tools/gen-sfx.mjs, tools/gen-music.mjs.
+# Run `node tools/check-pages.mjs` to see what the live site would be missing.
 art/*
-!art/cardback.webp
-sfx/
+!art/*.webp
+!art/victory.mp4
+!art/defeat.mp4
+!art/fx/
+art/fx/*
+!art/fx/*.webp
+sfx/*
+!sfx/*.mp3
 art-gen.log
 art-regen.log
 art-gen-212.log
