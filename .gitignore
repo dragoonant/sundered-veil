@@ -14,10 +14,6 @@ art-masters/*
 scratch/
 import-packets/
 
-# Local playtesting name/text override (tools/gen-source-names.mjs) — carries source
-# material display text; never commit, never deploy
-data/source-local.js
-
 # OS noise
 Thumbs.db
 desktop.ini

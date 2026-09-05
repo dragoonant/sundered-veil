@@ -41,6 +41,7 @@ for (const d of Object.values(SB.decks)) {
   required.add('art/' + d.base + '.webp');
   for (const c of d.cards || []) required.add('art/' + (c.id || c) + '.webp');
 }
+for (const c of Object.values(SB.cards)) if (c.token) required.add('art/' + c.id + '.webp'); // tokens enter play from effects
 required.add('art/cardback.webp');
 required.add('art/title-duel.webp');                       // styles.css title screen
 for (const key of ['arena-ground', 'arena-space', 'slot-res', 'slot-disc'])

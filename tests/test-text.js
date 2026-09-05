@@ -140,4 +140,52 @@
     T.eq(missing.sort().join(',') || 'none', 'none', 'traits with no display name');
   });
 
+  // ---- the source-name pack (names.js registerSource) -----------------------------
+  // data/names-source.js carries the published game's names; it is loaded by index.html
+  // only. If it ever reaches tests.html, every text test below silently starts checking
+  // stored printed text instead of the generated describers — the exact regression the
+  // split exists to prevent. So the suite asserts the pack is absent when it starts.
+  T.add('names: no source pack is loaded in the test suite', function () {
+    T.eq(SB.names.hasSource(), false, 'tests.html must not load data/names-source.js');
+    T.eq(SB.sourceText == null, true, 'SB.sourceText must be unset under test');
+  });
+
+  T.add('names: the source pack swaps names and text and restores them on the way out', function () {
+    SB.names.register('cards', 'zz-901', { name: 'Veil Name', subtitle: null });
+    SB.names.register('traits', 'tr-zz', 'Veil Trait');
+    SB.names.register('decks', 'deck-zz', 'Veil Deck');
+    try {
+      SB.names.registerSource({
+        cards: { 'zz-901': { name: 'Printed Name' }, 'zz-902': { name: 'Only Printed' } },
+        traits: { 'tr-zz': 'Printed Trait' }, decks: { 'deck-zz': 'Printed Deck' },
+        text: { 'zz-901': ['Printed line.'] },
+      });
+      T.eq(SB.names.hasSource(), true, 'pack registered');
+      T.eq(SB.names.mode(), 'source', 'source is the default mode');
+      T.eq(SB.names.card('zz-901'), 'Printed Name', 'card name from the pack');
+      T.eq(SB.names.card('zz-902'), 'Only Printed', 'an id with no original still resolves');
+      T.eq(SB.names.traits['tr-zz'], 'Printed Trait', 'trait name from the pack');
+      T.eq(SB.names.decks['deck-zz'], 'Printed Deck', 'deck name from the pack');
+      T.eq(SB.sourceText['zz-901'][0], 'Printed line.', 'printed text exposed for SB.cardText');
+
+      SB.names.setMode('original');
+      T.eq(SB.names.card('zz-901'), 'Veil Name', 'original name back under mode original');
+      T.eq(SB.names.card('zz-902'), '[zz-902]', 'an id with no original falls back to the id');
+      T.eq(SB.names.traits['tr-zz'], 'Veil Trait', 'original trait back');
+      T.eq(SB.sourceText, null, 'printed text off under mode original');
+
+      SB.names.toggleMode();
+      T.eq(SB.names.mode(), 'source', 'toggle flips back');
+      T.eq(SB.names.card('zz-901'), 'Printed Name', 'and the pack applies again');
+    } finally {
+      SB.names.clearSource();
+      SB.names.setMode('source');           // leave the default for the next test
+    }
+    T.eq(SB.names.hasSource(), false, 'pack cleared');
+    T.eq(SB.names.card('zz-901'), 'Veil Name', 'clearing restores the original');
+    T.eq(SB.names.cards['zz-902'], undefined, 'clearing removes pack-only ids');
+    T.eq(SB.sourceText, null, 'clearing unsets the printed text');
+    delete SB.names.cards['zz-901']; delete SB.names.traits['tr-zz']; delete SB.names.decks['deck-zz'];
+  });
+
 })(window.SB = window.SB || {});

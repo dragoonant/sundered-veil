@@ -27,11 +27,15 @@ Suite: `node tools/run-tests.mjs --quiet` → 82 passed. Run it before every com
 
 ## Real names vs original names
 
-- Original names (public) live in `data/names-*.js` and are what the repo ships.
-- Real SWU names are a gitignored override, `data/source-local.js`, built by
-  `node tools/gen-source-names.mjs scratch`. Loaded by `index.html` only, never by
-  `tests.html`, never committed. Delete the file (or deploy from the repo) to revert.
-- Never write third-party card names anywhere except `scratch/`.
+- Original names live in `data/names-*.js` and are always loaded; they are the fallback
+  for any id the source pack misses and the whole game when the pack is switched off.
+- Real SWU names and printed text are `data/names-source.js`, COMMITTED, built by
+  `node tools/gen-source-names.mjs scratch` (needs `scratch/trait-map.json` and a card
+  dump; `--fetch` downloads one). Loaded by `index.html` only, never by `tests.html` (a
+  test enforces this). `names.js registerSource` keeps both sets; the HUD drawer's
+  names button toggles, remembered in `localStorage['sb.names']`; default is printed.
+- Third-party names go nowhere else: not card data, engine, tests, art prompts, docs
+  or commit messages. Regenerate the file rather than editing it.
 
 ## Art
 

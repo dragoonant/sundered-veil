@@ -58,8 +58,8 @@ is not in play at all (see Decisions).
 
 ## Phase A — publish what is already public-safe (site is live at the end)
 
-Status: steps 1 (repo side), 2 (gitignore), 3, 5 landed on `claude/game-github-pages-plan-3a8qii`.
-Left for you: the Pages setting, `git add art sfx` on the machine that holds the renders,
+Status: DONE on `claude/game-github-pages-plan-3a8qii` including the asset commit (650
+required + 22 optional files, 37 MB). Left for you: merge to `main`, the Pages setting,
 the visibility flip.
 
 1. **Turn Pages on.** Settings → Pages → Build and deployment → Source: *Deploy from a
@@ -97,6 +97,9 @@ the visibility flip.
 End state: the game plays on Pages with the original *Sundered Veil* names and the AI art.
 
 ## Phase B — real names and printed text on the site
+
+Status: code side DONE on the branch (steps 1, 3, 4). Step 2, generating and committing
+`data/names-source.js`, runs on the machine that holds `scratch/`.
 
 1. **Promote the override from gitignored to committed.** `tools/gen-source-names.mjs`
    writes `data/names-source.js` (new name; the "local" in the old one described a
