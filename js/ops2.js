@@ -1477,6 +1477,7 @@
         unit.triggerUsedRound = state.round;
       }
       SB.queueEffects(state, unit.owner, ab.effects, {
+        viaTrigger: true,   // see js/effects.js fireTriggers
         sourceUid: unit.uid, cardId: unit.cardId, condition: ab.condition,
         playedCardId: ctx && ctx.playedCardId, bearerUid: ctx && ctx.bearerUid,
         attackerUid: ctx && ctx.attackerUid, attackTarget: ctx && ctx.attackTarget,

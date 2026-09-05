@@ -927,7 +927,8 @@
         SB.log(state, { type: 'leaderAction', player: itemStep.player, sound: 'ability' });
       }
       SB.queueEffects(state, itemStep.player, ab.effects,
-        Object.assign({}, itemStep.ctx, { cardId: p.leader.cardId, condition: ab.condition }));
+        Object.assign({}, itemStep.ctx,
+          { viaTrigger: true, cardId: p.leader.cardId, condition: ab.condition }));
     },
   };
 

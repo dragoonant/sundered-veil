@@ -257,6 +257,9 @@
           unit.triggerUsedRound = state.round;
         }
         SB.queueEffects(state, unit.owner, ab.effects, {
+          // viaTrigger: this ability spoke up on its own, so the log attributes its
+          // lines to it instead of printing them as if the player chose each one.
+          viaTrigger: true,
           sourceUid: unit.uid, cardId: unit.cardId, condition: ab.condition,
           playedCardId: ctx && ctx.playedCardId, bearerUid: ctx && ctx.bearerUid,
           attackerUid: ctx && ctx.attackerUid, attackTarget: ctx && ctx.attackTarget,
@@ -713,8 +716,15 @@
   // Advance queue[0] as far as possible. Returns when the queue is empty or the
   // head item needs a player choice (head.candidates set).
   SB.drainQueue = function (state) {
+    // The ambient log source is restored on every exit path, including the several
+    // returns below that park the queue on a pending choice.
+    const prevLogSource = SB.getLogSource();
+    try {
     while (state.queue.length > 0 && state.winner == null) {
       const item = state.queue[0];
+      // Only a TRIGGERED ability speaks for itself. The effects of a card you just
+      // played are already introduced by the "you played X" line above them.
+      SB.setLogSource(item.ctx && item.ctx.viaTrigger ? item.ctx.cardId : null);
       if (item.candidates) return; // waiting on a choice
 
       if (item.step !== 'effect') return; // setup/combat steps handled by engine
@@ -790,5 +800,6 @@
       state.queue.shift();
       SB.execOp(state, item, null);
     }
+    } finally { SB.setLogSource(prevLogSource); }
   };
 })(window.SB = window.SB || {});

@@ -19,21 +19,44 @@
 
   // ---- §3: card names in the log are live hover targets ---------------------
 
+  // A line with `via` is the work of a triggered ability, not a move its controller
+  // chose. Printed flat it reads as another turn — an attack whose trigger then plays a
+  // card and banks a resource looks like three actions in a row, which is how a correct
+  // interaction gets reported as a cheat. Indent it under the action and name the card
+  // that spoke, hoverable like any other card reference.
+  function attributeTo(line, state, cardId) {
+    line.classList.add('log-via');
+    const src = el('span', 'log-via-src', SB.names.card(cardId));
+    src.tabIndex = 0;
+    SB.preview && SB.preview.attach(src, cardId, null, function () { return SB.ui.state; });
+    line.appendChild(src);
+    line.appendChild(document.createTextNode(' '));
+  }
+
   function logLine(state, entry) {
     const line = el('div', 'log-line');
     if (SB.logIsDivider(entry)) line.classList.add('log-turn');
     if (entry.notice) line.classList.add('log-notice');
 
+
     const text = SB.describeLog(entry, state);
     if (text == null) {
       // Should be unreachable — tests/test-log.js fails on any type without a
       // describer — but a missing line must never be a raw internal id on screen.
-      line.textContent = '…';
+      line.appendChild(document.createTextNode('…'));
       return line;
     }
 
     const subject = SB.logSubject(entry, state);
-    if (!subject) { line.textContent = text; return line; }
+    // Attribute BEFORE the text (the prefix reads as "card › what it did"), and only
+    // when the line does not already name that card as its own subject — otherwise a
+    // trigger that talks about itself prints its name twice.
+    if (entry.via && SB.cards[entry.via] && (!subject || subject.cardId !== entry.via)) {
+      attributeTo(line, state, entry.via);
+    } else if (entry.via && SB.cards[entry.via]) {
+      line.classList.add('log-via');       // indent still marks it as a consequence
+    }
+    if (!subject) { line.appendChild(document.createTextNode(text)); return line; }
 
     const label = SB.names.card(subject.cardId);
     const at = text.indexOf(label);
@@ -43,8 +66,9 @@
 
     if (at === -1) {
       // The name did not survive phrasing (possessives, pronouns, plurals). Degrading
-      // to a whole-line hover target beats silently dropping the affordance.
-      line.textContent = text;
+      // to a whole-line hover target beats silently dropping the affordance. Appended,
+      // not assigned: an attribution prefix may already be in place.
+      line.appendChild(document.createTextNode(text));
       line.classList.add('has-card');
       line.tabIndex = 0;
       SB.preview.attach(line, subject.cardId, getUnit, getState);

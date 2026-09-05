@@ -1760,7 +1760,8 @@
       (src.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'bounty') return;
         SB.log(state, { type: 'bountyCollected', uid: unit.uid, sound: 'claim' });
-        SB.queueEffects(state, collector, ab.effects, { bountyUnitUid: unit.uid, bountyCardId: unit.cardId });
+        SB.queueEffects(state, collector, ab.effects,
+          { viaTrigger: true, cardId: unit.cardId, bountyUnitUid: unit.uid, bountyCardId: unit.cardId });
       });
     });
   };

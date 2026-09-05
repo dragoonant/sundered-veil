@@ -809,6 +809,11 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   color: #cfe0ff; border-bottom: 1px dotted rgba(207,224,255,.5); cursor: help;
 }
 .card-ref:hover, .card-ref:focus { color: #fff; border-bottom-color: #fff; outline: none; }
+/* A triggered ability's line, indented under the action that set it off and prefixed
+   with the card that spoke — so a trigger never reads as another player turn. */
+.log-line.log-via { padding-left: .85rem; border-left: 2px solid rgba(255,255,255,.10); }
+.log-via-src { color: var(--accent); font-weight: 600; opacity: .85; cursor: help; }
+.log-via-src::after { content: ' ›'; opacity: .6; }
 .log-line.has-card { cursor: help; }
 .log-line.has-card:hover { color: #cfe0ff; }
 
