@@ -1043,12 +1043,16 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
 
 /* The hover peek: a deck's leader and base, side by side, out of the way of the cursor. */
 .deck-peek {
-  position: fixed; z-index: 120; display: flex; gap: .5rem; pointer-events: none;
+  position: fixed; z-index: 120; display: flex; flex-direction: column; gap: .5rem;
+  pointer-events: none;
   padding: .5rem; border-radius: 12px; background: rgba(8,11,18,.94);
   border: 1px solid var(--line); box-shadow: 0 18px 60px rgba(0,0,0,.75);
   animation: deck-peek-in 140ms ease-out;
 }
-@keyframes deck-peek-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+/* Opacity only. The panel sets its own transform inline to scale itself into a short
+   window, and a keyframe that touches transform outranks that inline value for as long
+   as it runs — which showed up as the peek refusing to scale at all. */
+@keyframes deck-peek-in { from { opacity: 0; } to { opacity: 1; } }
 
 .title-start {
   margin-top: .8rem; width: 100%; background: #35558a; border-color: #4b74b8;

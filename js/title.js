@@ -51,24 +51,34 @@
     const old = document.querySelector('.deck-peek');
     if (old) old.remove();
   }
-  function attachDeckPeek(btn, deckId) {
+  function attachDeckPeek(btn, deck) {
+    const deckOf = typeof deck === 'function' ? deck : function () { return deck; };
     let timer = null;
     function show() {
       clearPeek();
+      const deckId = deckOf();
       const dk = SB.decks[deckId];
+      if (!dk) return;
       const panel = el('div', 'deck-peek');
+      // The same enlargement the board uses, so a leader's abilities and every keyword
+      // on it are readable here — which is the difference between choosing a deck and
+      // choosing a name.
       [dk.leader, dk.base].forEach(function (id) {
-        if (id) panel.appendChild(SB.renderCard({ cardId: id }, { size: 'hand' }));
+        if (id) panel.appendChild(SB.preview.face(id, null, null));
       });
       document.body.appendChild(panel);
-      // Beside the button, flipped to the other side when it would run off screen, and
-      // clamped so a deck near the bottom of a long list still shows both cards whole.
-      const r = btn.getBoundingClientRect(), p = panel.getBoundingClientRect();
+      // Two full previews stacked are taller than a short window: scale to fit rather
+      // than clip, since a peek nobody can scroll must show everything or nothing.
+      const r = btn.getBoundingClientRect();
+      const w = panel.offsetWidth, h = panel.offsetHeight;
+      const k = Math.min(1, (window.innerHeight - 16) / h, (window.innerWidth - 16) / w);
+      if (k < 1) { panel.style.transform = 'scale(' + k + ')'; panel.style.transformOrigin = '0 0'; }
+      const sw = w * k, sh = h * k;
       let left = r.right + 12;
-      if (left + p.width > window.innerWidth - 8) left = r.left - p.width - 12;
+      if (left + sw > window.innerWidth - 8) left = r.left - sw - 12;
       panel.style.left = Math.max(8, left) + 'px';
-      panel.style.top = Math.max(8, Math.min(r.top + r.height / 2 - p.height / 2,
-        window.innerHeight - p.height - 8)) + 'px';
+      panel.style.top = Math.max(8, Math.min(r.top + r.height / 2 - sh / 2,
+        window.innerHeight - sh - 8)) + 'px';
     }
     function arm() { clearTimeout(timer); timer = setTimeout(show, PEEK_MS); }
     function disarm() { clearTimeout(timer); clearPeek(); }
@@ -103,6 +113,8 @@
     btn.id = 'deck-btn-' + side;
     function paint() { btn.textContent = deckLabel(chosen[side]); }
     paint();
+    // Attached once; it reads the slot's CURRENT deck each time it opens.
+    attachDeckPeek(btn, function () { return chosen[side]; });
     btn.onclick = function () {
       openChooser(side, function (picked) { chosen[side] = picked; paint(); });
     };
