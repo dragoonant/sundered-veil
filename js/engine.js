@@ -793,11 +793,15 @@
   // 'only while damaged' unit) reads as the gain it is, and one that clears the
   // ENEMY's reads as the gift it is.
   SB.attackBlocked = function (state, u) {
-    // A 0-power attack is legal in the rules but only matters for on-attack triggers;
-    // keep it legal if the unit has one, else it is noise. (Printed abilities only —
+    // A 0-power attack is legal in the rules but only matters when the swing buys something;
+    // keep it legal for an on-attack trigger, Restore, or a when-defeated ability you
+    // collect by throwing the unit into a bigger one; else it is noise. (Printed abilities only —
     // parity with what legalActions did before this predicate was extracted.)
     if (SB.unitPower(state, u) <= 0 && !SB.hasKeyword(state, u, 'saboteur') &&
-        !(SB.unitDef(u).abilities || []).some(function (ab) { return ab.trigger === 'onAttack'; }) &&
+        !(SB.unitDef(u).abilities || []).some(function (ab) {
+          return ab.trigger === 'onAttack' || ab.trigger === 'whenDefeated';
+        }) &&
+        SB.keywordTotal(state, u, 'restore') === 0 &&
         SB.keywordTotal(state, u, 'raid') === 0) return 'noPower';
     if ((SB.unitDef(u).staticFlags || []).indexOf('attackOnlyDamaged') >= 0 && u.damage === 0) {
       return 'undamaged';
