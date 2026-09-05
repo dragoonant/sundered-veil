@@ -16,7 +16,7 @@
     proto.draggable = false;                 // load-bearing: native image drag kills pointer drags
     proto.setAttribute('aria-hidden', 'true');
     proto.decoding = 'sync';                 // NOT lazy/async — they defer paint past the clone frame
-    proto.src = (SB.artUrl ? SB.artUrl(cardId) : 'art/' + cardId + '.png');
+    proto.src = (SB.artUrl ? SB.artUrl(cardId) : 'art/' + cardId + '.webp');
     artProtos[cardId] = proto;
     return proto;
   }
@@ -34,7 +34,7 @@
       proto.draggable = false;
       proto.setAttribute('aria-hidden', 'true');
       proto.decoding = 'sync';
-      proto.src = SB.cardBackUrl ? SB.cardBackUrl() : 'art/cardback.jpg';
+      proto.src = SB.cardBackUrl ? SB.cardBackUrl() : 'art/cardback.webp';
       proto.onerror = function () { backFailed = true; };
       backProto = proto;
     }

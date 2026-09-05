@@ -20,6 +20,10 @@
   let lastLogLen = 0;
   let muted = false;
 
+  // Log sound tags the battle animation owns, and the clip each falls back to when
+  // the animation is off (the old attack/hit/destroy clips were retired for these).
+  const ANIM_OWNED = { attack: 'laser', hit: 'laserHit', destroy: 'defeat' };
+
   function clip(name) {
     if (!cache[name]) {
       const a = new Audio('sfx/' + name + '.mp3');
@@ -101,19 +105,25 @@
 
   function loadMusic() {
     if (Music.loading) return Music.loading;
+    // sfx/music.mp3 is only the fallback for a build with no tier tracks, and it is
+    // the largest file in sfx/ — fetch it ONLY once the tiers are known to be missing,
+    // never alongside them.
     Music.loading = Promise.all([
       fetchBuffer('music-1'), fetchBuffer('music-2'), fetchBuffer('music-3'),
-      fetchBuffer('end-win'), fetchBuffer('end-loss'), fetchBuffer('music'),
+      fetchBuffer('end-win'), fetchBuffer('end-loss'),
     ]).then(function (r) {
+      Music.endBuffers = { win: r[3], loss: r[4] };
       if (r[0] && r[1] && r[2]) {
         Music.buffers = { 1: r[0], 2: r[1], 3: r[2] };
-      } else if (r[5]) {
+        return;
+      }
+      return fetchBuffer('music').then(function (one) {
+        if (!one) return;
         // Single-track fallback: one recording, rising playback rate per tier.
-        Music.buffers = { 1: r[5], 2: r[5], 3: r[5] };
+        Music.buffers = { 1: one, 2: one, 3: one };
         Music.tierRates = [1.0, 1.09, 1.18];
         Music.sharedFallback = true;
-      }
-      Music.endBuffers = { win: r[3], loss: r[4] };
+      });
     });
     return Music.loading;
   }
@@ -217,10 +227,16 @@
     }
   }
 
-  function updateMusic(state) {
+  // The finale the animation still owes us: js/anim.js is drawing the planet that
+  // ended the match, so the ending music and the end-of-match video wait for it.
+  let deferredEnd = null;
+
+  function updateMusic(state, deferEnd) {
     if (!state || !Music.started || muted) return;
     if (SB.isTerminal(state)) {
-      playEnding(state.winner === (SB.ui ? SB.ui.humanSeat : 0));
+      const win = state.winner === (SB.ui ? SB.ui.humanSeat : 0);
+      if (deferEnd) { deferredEnd = win; return; }
+      playEnding(win);
       return;
     }
     if (Music.ended) return;
@@ -252,26 +268,46 @@
       if (muted) fadeOutCurrent(true);
       return muted;
     },
+    // One clip, now. js/anim.js calls this at the moment a shot lands.
+    sfx: function (name) {
+      if (muted) return;
+      try {
+        const a = clip(name).cloneNode();
+        a.volume = 0.5;
+        a.play().catch(function () { /* pre-interaction / missing file */ });
+      } catch (e) { /* no audio support */ }
+    },
     // Called by the UI after every apply: SFX for new log entries + music tier.
-    play: function (state) {
+    // `animated` = js/anim.js is about to draw this apply and will voice the battle
+    // tags itself when each picture happens, so they are left alone here.
+    // deferEnd: the caller (js/ui.js) is about to animate the match-ending blow and
+    // will call playDeferredEnd() once the planet has finished going up.
+    play: function (state, animated, deferEnd) {
       const fresh = state.log.slice(lastLogLen);
       lastLogLen = state.log.length;
       if (!muted) {
         const seen = {};
         fresh.forEach(function (l) {
           if (!l.sound || seen[l.sound]) return; // one clip per type per action
+          if (animated && ANIM_OWNED[l.sound]) return;
           seen[l.sound] = true;
-          try {
-            const a = clip(l.sound).cloneNode();
-            a.volume = 0.5;
-            a.play().catch(function () { /* pre-interaction / missing file */ });
-          } catch (e) { /* no audio support */ }
+          SB.sound.sfx(ANIM_OWNED[l.sound] || l.sound);
         });
       }
-      updateMusic(state);
+      updateMusic(state, deferEnd);
+    },
+    // Undoing past the end: the finale we were holding is no longer owed.
+    dropDeferredEnd: function () { deferredEnd = null; },
+    // The end-of-match animation is over (played out or skipped): music and video now.
+    playDeferredEnd: function () {
+      if (deferredEnd == null) return;
+      const win = deferredEnd;
+      deferredEnd = null;
+      playEnding(win);
     },
     reset: function () {
       lastLogLen = 0;
+      deferredEnd = null;
       Music.ended = false;
       if (SB.endVideo) SB.endVideo.reset();
       fadeOutCurrent(true);

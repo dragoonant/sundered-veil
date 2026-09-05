@@ -953,7 +953,7 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   position: fixed; inset: 0; z-index: 80; display: none;
   place-items: center; text-align: center;
   background: #05070d center/cover no-repeat;
-  background-image: url('art/title-duel.png');
+  background-image: url('art/title-duel.webp');
 }
 #title-screen.open { display: grid; }
 /* The picker needs the art readable behind it but not competing with it. */
@@ -1015,4 +1015,185 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .title-hint { animation: none; opacity: .7; }
+}
+
+/* ================= battle animations (js/anim.js) =================
+   Bolts, lunges, impacts and the fall into the discard pile are drawn in a fixed
+   layer over the OLD board, then the board redraws. The lock beneath it swallows
+   input while a picture is playing; a click on it skips to the end. */
+#fx-layer {
+  position: fixed; inset: 0; z-index: 66; pointer-events: none; overflow: hidden;
+}
+#fx-lock {
+  position: fixed; inset: 0; z-index: 65; display: none; cursor: pointer;
+  background: transparent;
+}
+#fx-lock.open { display: block; }
+.fx-hidden { visibility: hidden !important; }
+
+.fx-sprite { position: absolute; pointer-events: none; }
+.fx-sprite img { width: 100%; height: 100%; display: block; object-fit: fill; }
+
+/* the bolt: sprite (or a CSS streak when the sprite is missing), rotated to aim */
+.fx-bolt { transform-origin: 50% 50%; will-change: transform; filter: drop-shadow(0 0 6px currentColor); }
+.fx-bolt.is-red  { color: #ff4a3d; }
+.fx-bolt.is-blue { color: #4ee6d6; }
+.fx-bolt.is-gold { color: #ffe08a; }
+.fx-bolt.no-sprite {
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent 0%, currentColor 55%, #fff 92%, #fff 100%);
+  height: 6px !important; margin-top: 12px;
+}
+.fx-muzzle {
+  position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, currentColor 35%, transparent 70%);
+  animation: fx-muzzle 220ms ease-out forwards;
+}
+.fx-muzzle.is-red  { color: #ff4a3d; }
+.fx-muzzle.is-blue { color: #4ee6d6; }
+.fx-muzzle.is-gold { color: #ffe08a; }
+@keyframes fx-muzzle { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+
+/* impacts: burst / slash / shield pop scale up and fade over --dur */
+.fx-impact { animation: fx-impact var(--dur, 460ms) cubic-bezier(.2,.8,.4,1) forwards; mix-blend-mode: screen; }
+.fx-impact.no-sprite {
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #ffb347 30%, rgba(255,120,40,.4) 55%, transparent 70%);
+}
+.fx-slash.no-sprite { background: radial-gradient(circle, #fff 0%, #7ff 30%, transparent 65%); }
+.fx-shield { filter: hue-rotate(160deg) saturate(1.3); }
+.fx-shield.no-sprite { background: radial-gradient(circle, #fff 0%, #5cf 30%, transparent 65%); }
+@keyframes fx-impact {
+  0%   { transform: scale(.35) rotate(-8deg); opacity: 0; }
+  18%  { transform: scale(1.05) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1.25) rotate(6deg); opacity: 0; }
+}
+/* the smoke on a dying card lingers for the whole fall */
+.fx-smoke { animation: fx-smoke var(--dur, 1100ms) ease-out forwards; mix-blend-mode: screen; }
+.fx-smoke.no-sprite { border-radius: 50%; background: radial-gradient(circle, rgba(255,200,150,.8) 0%, rgba(120,120,130,.5) 40%, transparent 70%); }
+@keyframes fx-smoke {
+  0%   { transform: scale(.4); opacity: 0; }
+  20%  { transform: scale(1); opacity: .95; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+/* the finishing blow: the loser's planet cracks open and detonates over its base.
+   Every layer is timed off --charge (the glow-and-crack) and --boom (the blast). */
+.fx-planet-blast { position: absolute; pointer-events: none; }
+.fx-planet-blast > * { position: absolute; inset: 0; margin: auto; }
+/* the planet itself: a lit disc that swells and whitens through the charge */
+.pb-planet {
+  width: 44%; height: 44%; border-radius: 50%;
+  background: radial-gradient(circle at 36% 32%, #b9cede 0%, #6d7f93 42%, #2b3644 78%, #141a22 100%);
+  box-shadow: 0 0 26px rgba(140,190,255,.45);
+  animation: pb-planet var(--charge, 750ms) ease-in forwards,
+             pb-gone var(--boom, 1300ms) ease-out var(--charge, 750ms) forwards;
+}
+/* the core going molten under the crust: a warm glow welling up through the charge */
+.pb-cracks {
+  width: 44%; height: 44%; border-radius: 50%; mix-blend-mode: screen; opacity: 0;
+  background: radial-gradient(circle closest-side,
+    rgba(255,244,214,.95) 0%, rgba(255,186,86,.85) 26%, rgba(255,110,40,.45) 52%,
+    rgba(190,50,20,.2) 74%, transparent 96%);
+  animation: pb-cracks var(--charge, 750ms) ease-in forwards,
+             pb-gone var(--boom, 1300ms) ease-out var(--charge, 750ms) forwards;
+}
+/* the detonation flash */
+.pb-flash {
+  width: 86%; height: 86%; border-radius: 50%; opacity: 0; mix-blend-mode: screen;
+  background: radial-gradient(circle, #fff 0%, #ffe9b0 14%, rgba(255,150,60,.6) 30%, rgba(255,90,30,.18) 48%, transparent 66%);
+  animation: pb-flash var(--boom, 1300ms) cubic-bezier(.15,.85,.35,1) var(--charge, 750ms) forwards;
+}
+/* the flat equatorial shockwave ring, the shape everyone remembers */
+.pb-ring {
+  width: 30%; height: 30%; border-radius: 50%; opacity: 0; mix-blend-mode: screen;
+  border: 5px solid rgba(212,240,255,.98);
+  box-shadow: 0 0 30px rgba(150,205,255,.95), inset 0 0 26px rgba(150,205,255,.6);
+  animation: pb-ring var(--boom, 1300ms) cubic-bezier(.1,.7,.3,1) var(--charge, 750ms) forwards;
+}
+.pb-ring-2 { border-color: rgba(255,215,150,.75); animation-delay: calc(var(--charge, 750ms) + 110ms); }
+/* debris thrown outward along --a */
+.pb-shard {
+  width: 5px; height: 5px; border-radius: 50%; opacity: 0; mix-blend-mode: screen;
+  background: radial-gradient(circle, #fff 0%, #ffc165 55%, transparent 100%);
+  animation: pb-shard var(--boom, 1300ms) cubic-bezier(.15,.7,.4,1) var(--charge, 750ms) forwards;
+}
+@keyframes pb-planet {
+  0%   { transform: scale(.92); filter: brightness(1); }
+  70%  { transform: scale(1.06); filter: brightness(1.5); }
+  100% { transform: scale(1.14); filter: brightness(2); }
+}
+@keyframes pb-gone {
+  0%   { transform: scale(1.14); opacity: 1; filter: brightness(3); }
+  16%  { transform: scale(1.5); opacity: .8; filter: brightness(4); }
+  100% { transform: scale(2.4); opacity: 0; filter: brightness(1); }
+}
+@keyframes pb-cracks {
+  0%   { opacity: 0; transform: scale(.7); }
+  55%  { opacity: .6; transform: scale(.95); }
+  100% { opacity: 1; transform: scale(1.14); }
+}
+@keyframes pb-flash {
+  0%   { opacity: 0; transform: scale(.16); }
+  8%   { opacity: 1; transform: scale(.8); }
+  26%  { opacity: .55; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+@keyframes pb-ring {
+  0%   { opacity: 0; transform: rotate(-14deg) scaleX(.25) scaleY(.1); }
+  10%  { opacity: 1; }
+  100% { opacity: 0; transform: rotate(-14deg) scaleX(3.3) scaleY(1.05); border-width: 1px; }
+}
+@keyframes pb-shard {
+  0%   { opacity: 0; transform: rotate(var(--a, 0deg)) translateX(0) scale(.6); }
+  12%  { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--a, 0deg)) translateX(46%) scale(1.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx-planet-blast > * { animation-duration: 1ms; }
+}
+
+/* the card that was hit recoils */
+.fx-hit { animation: fx-hit 420ms cubic-bezier(.3,.6,.4,1) !important; }
+@keyframes fx-hit {
+  0%   { transform: translate(0,0); filter: brightness(1); }
+  15%  { transform: translate(-5px, 2px) rotate(-2deg); filter: brightness(2.2); }
+  35%  { transform: translate(5px, -2px) rotate(2deg); filter: brightness(1.4); }
+  55%  { transform: translate(-3px, 1px); }
+  75%  { transform: translate(2px, 0); }
+  100% { transform: translate(0,0); filter: brightness(1); }
+}
+
+/* the damage number rising off the target */
+.fx-number {
+  position: absolute; transform: translate(-50%, -50%); z-index: 2;
+  font-weight: 900; font-size: 1.7rem; color: #ff5a4a;
+  text-shadow: 0 0 4px #000, 0 2px 8px rgba(0,0,0,.9), 0 0 14px rgba(255,90,74,.7);
+  animation: fx-number var(--dur, 900ms) cubic-bezier(.2,.7,.3,1) forwards;
+}
+.fx-number.is-base { font-size: 2.2rem; }
+.fx-number.is-shield { color: #7cd4ff; font-size: 1.1rem; text-transform: uppercase; letter-spacing: .1em; }
+@keyframes fx-number {
+  0%   { transform: translate(-50%, -50%) scale(.5); opacity: 0; }
+  15%  { transform: translate(-50%, -60%) scale(1.25); opacity: 1; }
+  70%  { transform: translate(-50%, -150%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -190%) scale(.9); opacity: 0; }
+}
+
+/* a card in flight: the lunging attacker, or one falling into the pile */
+.fx-clone {
+  position: absolute; margin: 0; z-index: 3; will-change: transform, opacity;
+  transform-origin: 50% 50%;
+  box-shadow: 0 14px 30px rgba(0,0,0,.6);
+}
+.fx-clone:hover { transform: none; }
+.fx-flyer { z-index: 4; }
+/* the pile that just received a card */
+.fx-received .card { animation: fx-received 500ms ease-out; }
+@keyframes fx-received {
+  0% { transform: scale(1.12); filter: brightness(1.8); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx-hit { animation: none !important; }
 }

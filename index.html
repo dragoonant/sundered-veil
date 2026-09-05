@@ -58,6 +58,7 @@
     <div id="side-controls">
       <button id="undo-btn"></button>
       <button id="mute-btn"></button>
+      <button id="anim-btn"></button>
       <button id="new-game-btn"></button>
       <button id="help-btn"></button>
     </div>
@@ -127,14 +128,15 @@
 <script src="js/endvideo.js"></script>
 <script src="js/help.js"></script>
 <script src="js/hud.js"></script>
+<script src="js/anim.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/title.js"></script>
 <script>
 (function () {
   SB.validateContent();
-  SB.artUrl = function (cardId) { return 'art/' + cardId + '.png'; };
-  SB.cardBackUrl = function () { return 'art/cardback.jpg'; };
+  SB.artUrl = function (cardId) { return 'art/' + cardId + '.webp'; };
+  SB.cardBackUrl = function () { return 'art/cardback.webp'; };
   // The board draws itself and places every zone on its own painted slot.
   SB.boardArt.init(document.getElementById('mat'));
   SB.hud.init();

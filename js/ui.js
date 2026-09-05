@@ -26,21 +26,43 @@
       seed: opts.seed || ('g' + Math.floor(Math.random() * 1e9)) });
     UI.aiDifficulty = opts.difficulty || 'mid';
     if (SB.endVideo) SB.endVideo.reset();
+    if (SB.anim) SB.anim.skip();
     UI.render();
     UI.maybeAI();
   };
 
   UI.doAction = function (action) {
+    if (SB.anim && SB.anim.busy()) return;   // the picture finishes (or is skipped) first
     UI.history.push(UI.state);
     const before = UI.state.log.length;
+    const prev = UI.state;
     UI.state = SB.apply(UI.state, action);
-    SB.sound && SB.sound.play(UI.state);
-    spotlightNewPlays(before);
-    UI.render();
-    UI.maybeAI();
+    settle(prev, before);
   };
 
+  // After an apply: sound, the played-card spotlight, then the battle animation
+  // (js/anim.js) plays on the OLD board — the redraw waits for it, so the player
+  // sees the shot land before the numbers change and the dead card leave.
+  function settle(prev, before) {
+    const steps = SB.anim ? SB.anim.plan(prev, UI.state, before, UI.humanSeat) : [];
+    const animated = !!(SB.anim && SB.anim.willAnimate(steps));
+    // The match ended in this apply and we are drawing it: the ending music and the
+    // end-of-match video wait until the planet has finished blowing up (or the
+    // player has clicked through it), instead of cutting over the animation.
+    const holdEnd = animated && SB.isTerminal(UI.state);
+    SB.sound && SB.sound.play(UI.state, animated, holdEnd);
+    spotlightNewPlays(before);
+    if (!animated) { UI.render(); UI.maybeAI(); return; }
+    SB.anim.run(steps, UI.state, UI.humanSeat, function () {
+      UI.render();
+      if (holdEnd && SB.sound && SB.sound.playDeferredEnd) SB.sound.playDeferredEnd();
+      UI.maybeAI();
+    });
+  }
+
   UI.undo = function () {
+    if (SB.sound && SB.sound.dropDeferredEnd) SB.sound.dropDeferredEnd();
+    if (SB.anim) SB.anim.skip();
     if (SB.endVideo) SB.endVideo.reset();
     while (UI.history.length > 0) {
       const prev = UI.history.pop();
@@ -59,14 +81,16 @@
     UI.aiThinking = true;
     setTimeout(function () {
       UI.aiThinking = false;
+      if (SB.anim && SB.anim.busy()) { UI.maybeAI(); return; }   // wait its turn out
+      // The state may have changed hands while the timer ran (an undo, a new game):
+      // never choose a move for the human.
+      if (SB.isTerminal(UI.state) || whoActs(UI.state) === UI.humanSeat) return;
       const action = SB.ai.chooseAction(UI.state, UI.aiDifficulty);
       UI.history.push(UI.state);
       const before = UI.state.log.length;
+      const prev = UI.state;
       UI.state = SB.apply(UI.state, action);
-      SB.sound && SB.sound.play(UI.state);
-      spotlightNewPlays(before);
-      UI.render();
-      UI.maybeAI();
+      settle(prev, before);
     }, 450);
   };
 
@@ -218,6 +242,8 @@
   UI.render = function () {
     const s = UI.state;
     if (!s) return;
+    // Mid-animation the board is deliberately stale; the sequence redraws when done.
+    if (SB.anim && SB.anim.busy()) return;
     const acts = SB.isTerminal(s) ? [] : SB.legalActions(s);
     renderTurnBar(s, acts);
     renderBase($('enemy-base'), s, SB.other(UI.humanSeat), acts);
@@ -609,6 +635,17 @@
     deployLeaderPilot: 1, leaderAction: 1, resourceCard: 1, choose: 1,
     unitAction: 1, baseEpic: 1, smuggle: 1 };
 
+  // One line naming a pending trigger, for the resolve-order buttons.
+  function triggerLabel(s, item) {
+    if (item.step === 'effect' && item.op && item.op.op === 'ambushAttack') {
+      return SB.names.keywords.ambush + ' (' + unitName(s, item.ctx.sourceUid) + ' attacks)';
+    }
+    if (item.step === 'leaderTriggerOffer') {
+      return SB.names.card(s.players[item.player].leader.cardId) + "'s ability";
+    }
+    return SB.targetPrompt ? SB.targetPrompt(s, item) : item.step;
+  }
+
   function actionLabel(s, a) {
     const cardName = function (id) { return SB.names.card(id); };
     switch (a.type) {
@@ -638,6 +675,11 @@
       case 'plotPlay': return a.resourceIndex === -1 ? SB.names.ui.decline : SB.names.keywords.plot + ': ' + cardName(a.cardId);
       case 'plotAttach': return 'Attach to: ' + unitName(s, a.uid);
       case 'leaderTrigger': return a.use ? SB.names.ui.leaderAbility : SB.names.ui.decline;
+      case 'orderTrigger': {
+        const it = s.queue[0] || {};
+        const sub = (it.items || [])[a.index] || {};
+        return 'First: ' + triggerLabel(s, sub);
+      }
       case 'massExhaust': case 'budgetExhaust': return a.uid == null ? 'Stop' : 'Exhaust: ' + unitName(s, a.uid);
       case 'massAttackChoose': case 'supportChoose': return a.uid == null ? 'Stop' : 'Attack with: ' + unitName(s, a.uid);
       case 'defeatOwn': return 'Defeat: ' + unitName(s, a.uid);

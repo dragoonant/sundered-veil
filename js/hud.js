@@ -34,6 +34,13 @@
     if (h) h.setAttribute('aria-expanded', String(on));
   }
 
+  function syncAnim() {
+    const b = $('anim-btn');
+    if (!b || !SB.anim) return;
+    const m = SB.anim.mode();
+    b.textContent = m === 'off' ? SB.names.ui.animOff : (m === 'quick' ? SB.names.ui.animQuick : SB.names.ui.animFull);
+  }
+
   function syncMute() {
     const b = $('mute-btn');
     if (!b) return;
@@ -177,7 +184,10 @@
       $('help-btn').textContent = SB.names.ui.helpBtn;
       $('help-btn').onclick = function () { SB.help.open(); };
       $('mute-btn').onclick = function () { SB.sound.toggleMute(); syncMute(); };
+      // Battle animations: full / quick / off, remembered across sessions (js/anim.js).
+      $('anim-btn').onclick = function () { SB.anim.cycleMode(); syncAnim(); };
       syncMute();
+      syncAnim();
       setDrawer(false);
       // Esc closes whichever piece of chrome is in the way. The choice modal owns Esc
       // for its own peek (js/targeting.js), so it is checked first and left alone.

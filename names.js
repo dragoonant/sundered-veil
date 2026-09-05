@@ -53,13 +53,16 @@
       // The log/history drawer (collapsed at the start of a game) and its controls.
       logDrawer: 'Battle log', logOpen: 'Log', logClose: 'Close',
       muteOn: 'Sound: on', muteOff: 'Sound: off',
+      // The battle-animation speed button and the skip hint on the input lock.
+      animFull: 'Animations: full', animQuick: 'Animations: quick', animOff: 'Animations: off',
+      animSkip: 'Click to skip', animShield: 'shield',
       // The title screen and its deck picker.
       gameTitle: 'Starbound Legions',
       gameTagline: 'Two fleets. One war. Only one base left standing.',
       titleHint: 'Click to continue',
       chooseDeck: 'Choose your legion', chooseDifficulty: 'Opponent skill',
       startGame: 'Start the battle',
-      difficulty: { easy: 'Easy', mid: 'Medium', hard: 'Hard' },
+      difficulty: { easy: 'Easy', mid: 'Medium', hard: 'Hard', competition: 'Competition' },
       // Deck picker groups and the card-pool format a tournament list was built for.
       deckGroups: { precon: 'Legion decks', competitive: 'Tournament lists' },
       format: { premier: 'Premier', eternal: 'Eternal' },

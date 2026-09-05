@@ -56,3 +56,18 @@ Suite: `node tools/run-tests.mjs --quiet` → 82 passed. Run it before every com
 - Commit at checkpoints and report, rather than one long autonomous run.
 - Git Bash here eats backslashes in `sed -i` and `node -e` regex literals; write such lines
   from a heredoc file.
+
+## Battle animations (added 2026-09-03, uncommitted at time of writing)
+
+`js/anim.js` draws every hit before the board redraws: `plan()` (pure, tested in
+`tests/test-anim.js`) turns one apply's fresh log entries into steps; `run()` plays them on
+the OLD board, then `UI.render` fires. Ranged = sprite bolt (`art/fx/bolt-*.webp`, colour by
+aspect), melee = the attacker card lunges (ground units with the force/blade traits listed
+in MELEE_TRAITS), defeats shrink into the owner's discard pile, events fly from the spotlight
+to the pile. Two beats per unit attack: attacker lands, then the defender's return fire.
+Input is locked under `#fx-lock`; a click, Esc, Space or Enter skips. The drawer button
+`anim-btn` cycles full / quick / off (localStorage `sb.anim`). Sprites: `node tools/gen-fx.mjs`;
+clips laser/laserHit/lunge/slash/baseHit/defeat: `node tools/gen-sfx.mjs` (attack/hit/destroy
+clips were retired; `js/sound.js` aliases those log tags). Engine side: `unitDamage`,
+`shieldPopped` and `baseDamage` entries now carry `source` (+ `sourceCardId`) and `combat`,
+and combat damage finally passes `ctx.combat`, so `whenCombatDamaged` triggers fire.

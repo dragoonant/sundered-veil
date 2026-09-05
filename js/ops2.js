@@ -1165,7 +1165,8 @@
     actions: function (state, it) {
       if (!it.aGateFor) return prevBinaryPick.actions(state, it);
       const acts = [];
-      if (!it.aGate || SB.checkCondition(state, it.player, it.aGate, it.ctx || {})) acts.push({ type: 'binary', player: it.player, pick: 'a' });
+      if ((!it.aGate || SB.checkCondition(state, it.player, it.aGate, it.ctx || {})) &&
+          SB.branchAffordable(state, it.controller, it.a)) acts.push({ type: 'binary', player: it.player, pick: 'a' });
       acts.push({ type: 'binary', player: it.player, pick: 'b' });
       return acts;
     },

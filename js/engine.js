@@ -127,13 +127,7 @@
 
     // Attacks.
     SB.allUnits(state, me).forEach(function (u) {
-      if (u.exhausted) return;
-      if (SB.unitPower(state, u) <= 0 && !unitHasKeyword(state, u, 'saboteur')) {
-        // A 0-power attack is legal in rules but only matters for on-attack triggers;
-        // keep it legal if the unit has any onAttack ability, else prune the noise.
-        if (!hasTrigger(u, 'onAttack') && SB.keywordTotal(state, u, 'raid') === 0) return;
-      }
-      if ((SB.unitDef(u).staticFlags || []).indexOf('attackOnlyDamaged') >= 0 && u.damage === 0) return;
+      if (u.exhausted || SB.attackBlocked(state, u)) return;
       SB.attackTargets(state, u).forEach(function (t) {
         acts.push({ type: 'attack', player: me, attacker: u.uid, target: t });
       });
@@ -554,9 +548,12 @@
         unit.shields += 1;
         SB.log(state, { type: 'shield', uid: unit.uid, sound: 'shield' });
       }
+      // Ambush: may ready and attack immediately. It triggers on the play, so it is
+      // batched with the leader's when-you-play-a-unit offers below and the player
+      // chooses which of them resolves first.
+      const simul = [];
       if (SB.hasKeyword(state, unit, 'ambush')) {
-        // Ambush: may ready and attack immediately. Queue the option as a choice.
-        state.queue.push({ step: 'effect', controller: me, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
+        simul.push({ step: 'effect', controller: me, ctx: { sourceUid: unit.uid, cardId: unit.cardId },
           op: { op: 'ambushAttack', target: null } });
       }
       SB.fireTriggers(state, 'onPlay', unit, { sourceUid: unit.uid, paidCost: cost });
@@ -576,7 +573,8 @@
         if (obs.uid === unit.uid) return;
         SB.fireTriggers(state, 'onUnitPlayed', obs, { sourceUid: obs.uid, playedUid: unit.uid, playedCardId: unit.cardId });
       });
-      fireLeaderTrigger(state, me, 'onUnitPlayed', { playedUid: unit.uid, playedCardId: unit.cardId });
+      fireLeaderTrigger(state, me, 'onUnitPlayed', { playedUid: unit.uid, playedCardId: unit.cardId }, simul);
+      queueSimultaneous(state, me, simul);
     } else if (card.type === 'event') {
       p.discard.push(inst);
       p.eventsThisRound = (p.eventsThisRound || 0) + 1;
@@ -598,12 +596,15 @@
       target.upgrades.push(inst);
       SB.log(state, { type: 'attached', uid: target.uid, cardId: inst.cardId, sound: 'attach' });
       // Upgrade abilities that trigger when the upgrade itself is played resolve
-      // in the context of the bearer.
+      // in the context of the bearer. This is the ONLY place they fire: the upgrade
+      // is already on the bearer, so SB.fireTriggers(bearer, 'onPlay') would run them
+      // a second time — and would re-run the BEARER's own when-played abilities on
+      // top, neither of which is a thing that happened.
       (card.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'onPlay') return;
-        SB.queueEffects(state, me, ab.effects, { sourceUid: target.uid, cardId: inst.cardId, condition: ab.condition });
+        SB.queueEffects(state, me, ab.effects, { sourceUid: target.uid, cardId: inst.cardId,
+          upgradeCardId: inst.cardId, condition: ab.condition });
       });
-      SB.fireTriggers(state, 'onPlay', target, { sourceUid: target.uid, upgradeCardId: inst.cardId });
       SB.allUnits(state, me).forEach(function (obs) {
         SB.fireTriggers(state, 'onUpgradePlayed', obs, { sourceUid: obs.uid, upgradeCardId: inst.cardId });
       });
@@ -683,7 +684,7 @@
       (state.tempCombatMods || []).forEach(function (m) {
         if (m.vsBase && attacker.owner === SB.other(m.enemyOf)) basePower = Math.max(0, basePower + m.power);
       });
-      SB.damageBase(state, item.target.player, basePower, 'attack');
+      SB.damageBase(state, item.target.player, basePower, 'attack', attacker.uid);
       if (basePower > 0) {
         state.baseDamagersThisPhase = state.baseDamagersThisPhase || [];
         state.baseDamagersThisPhase.push(attacker.uid);
@@ -720,22 +721,22 @@
     delete attacker.defenderFirstNext;
     if (defenderFirst) {
       // The attacker lets the defender strike first (law-086 style).
-      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
-      if (SB.findUnit(state, attacker.uid)) SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
+      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid, combat: true });
+      if (SB.findUnit(state, attacker.uid)) SB.damageUnit(state, defender, power, { sourceUid: attacker.uid, combat: true });
     } else if (item.firstStrike || alwaysFirst) {
       // Attacker deals combat damage first; defender only retaliates if it lives.
-      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
+      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid, combat: true });
       if (SB.findUnit(state, defender.uid)) {
-        SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
+        SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid, combat: true });
       }
     } else {
       // Simultaneous: compute both, then apply both.
-      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid });
-      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid });
+      SB.damageUnit(state, defender, power, { sourceUid: attacker.uid, combat: true });
+      SB.damageUnit(state, attacker, defPower, { sourceUid: defender.uid, combat: true });
     }
     const defeated = !SB.findUnit(state, defender.uid);
     if (overwhelm && !defShielded && power > defHpLeft) {
-      SB.damageBase(state, defender.owner, power - defHpLeft, 'overwhelm');
+      SB.damageBase(state, defender.owner, power - defHpLeft, 'overwhelm', attacker.uid);
       state.baseDamagersThisPhase = state.baseDamagersThisPhase || [];
       state.baseDamagersThisPhase.push(attacker.uid);
     }
@@ -783,6 +784,25 @@
     }
   };
 
+  // Why a unit cannot attack, ignoring exhaustion — exhaustion is a normal part of
+  // the turn cycle, while these are properties of the unit's own situation. Returns a
+  // reason string or null. js/ai.js prices a unit's power by this: power you cannot
+  // swing with is not power, so an ability that CLEARS a block (damaging your own
+  // 'only while damaged' unit) reads as the gain it is, and one that clears the
+  // ENEMY's reads as the gift it is.
+  SB.attackBlocked = function (state, u) {
+    // A 0-power attack is legal in the rules but only matters for on-attack triggers;
+    // keep it legal if the unit has one, else it is noise. (Printed abilities only —
+    // parity with what legalActions did before this predicate was extracted.)
+    if (SB.unitPower(state, u) <= 0 && !SB.hasKeyword(state, u, 'saboteur') &&
+        !(SB.unitDef(u).abilities || []).some(function (ab) { return ab.trigger === 'onAttack'; }) &&
+        SB.keywordTotal(state, u, 'raid') === 0) return 'noPower';
+    if ((SB.unitDef(u).staticFlags || []).indexOf('attackOnlyDamaged') >= 0 && u.damage === 0) {
+      return 'undamaged';
+    }
+    return null;
+  };
+
   // Legal attack targets for a unit (sentinel/saboteur rules) — shared with the
   // action enumerator and effect-driven attacks.
   SB.attackTargets = function (state, unit) {
@@ -807,16 +827,28 @@
   // Undeployed-leader triggered abilities (e.g. "When you play an upgrade").
   // exhaustCost:true abilities are offered as optional (pay by exhausting leader).
   SB.fireLeaderTrigger = fireLeaderTrigger;
-  function fireLeaderTrigger(state, playerIdx, trigger, ctx) {
+  // sink, when given, collects the offers instead of queueing them, so the caller can
+  // batch them with other triggers from the same event and let the player order them.
+  function fireLeaderTrigger(state, playerIdx, trigger, ctx, sink) {
     const p = state.players[playerIdx];
     if (p.leader.deployed) return;
     const abilities = SB.card(p.leader.cardId).leaderSide.abilities || [];
     abilities.forEach(function (ab, ai) {
       if (ab.trigger !== trigger) return;
       if (ab.exhaustCost && p.leader.exhausted) return;
-      state.queue.push({ step: 'leaderTriggerOffer', player: playerIdx, abilityIndex: ai,
-        exhaustCost: !!ab.exhaustCost, ctx: ctx || {} });
+      const offer = { step: 'leaderTriggerOffer', player: playerIdx, abilityIndex: ai,
+        exhaustCost: !!ab.exhaustCost, ctx: ctx || {} };
+      if (sink) sink.push(offer); else state.queue.push(offer);
     });
+  }
+
+  // Abilities triggered by the same event resolve in the order their controller
+  // chooses. Ambush is a when-played trigger, so a leader's "when you play a unit"
+  // ability may be taken FIRST — buffing the unit before its ambush attack.
+  function queueSimultaneous(state, playerIdx, items) {
+    if (items.length === 0) return;
+    if (items.length === 1) { state.queue.push(items[0]); return; }
+    state.queue.push({ step: 'triggerOrder', player: playerIdx, items: items });
   }
 
   SB.queueSteps = SB.queueSteps || {};
@@ -888,6 +920,23 @@
     },
   };
 
+  // The controller orders their own simultaneous triggers: pick one to resolve now;
+  // the rest stay batched behind it until only one is left.
+  SB.queueSteps.triggerOrder = {
+    actions: function (state, itemStep) {
+      return itemStep.items.map(function (_, i) {
+        return { type: 'orderTrigger', player: itemStep.player, index: i };
+      });
+    },
+    apply: function (state, itemStep, action) {
+      const chosen = itemStep.items[action.index];
+      const rest = itemStep.items.filter(function (_, i) { return i !== action.index; });
+      const tail = rest.length > 1
+        ? [{ step: 'triggerOrder', player: itemStep.player, items: rest }] : rest;
+      state.queue = [chosen].concat(tail, state.queue);
+    },
+  };
+
   // ---- queue driver -------------------------------------------------------
 
   function processQueue(state) {
@@ -938,6 +987,9 @@
       }
       if (item.step === 'effect') {
         SB.drainQueue(state);
+        // The drain hands an ambush item back untouched: loop so the branch above
+        // builds its attack candidates.
+        if (state.queue.length > 0 && state.queue[0].op && state.queue[0].op.op === 'ambushAttack') continue;
         if (state.queue.length > 0 && state.queue[0].candidates) return;
         if (state.queue.length > 0 && state.queue[0].step !== 'effect') continue;
         if (state.queue.length > 0) return; // drain stopped on a choice

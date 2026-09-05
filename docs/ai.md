@@ -193,7 +193,13 @@ instead of `pl.hand.length * W.handCard`, so the cheapest way to gain a resource
 bank a card you cannot cast. Implemented as a reach decay (`outOfReachDecay: 0.15`,
 `outOfReachFloor: 0.4`) and measured on the same matrix, same seed, same 1440 games.
 
-**It made the AI worse, and it is reverted. Do not try it again in this form.**
+**It made the AI worse. Do not try it again in this form.**
+
+> **Correction, 2026-09-03.** This section claimed the change was reverted. It was not:
+> the commit that recorded the failure (`9561922`) touched only this file, so the losing
+> heuristic stayed live in `js/ai.js` for three days and every measurement taken in that
+> window was taken on it. The code is reverted now, as part of the Competition-difficulty
+> work. **A doc that says "reverted" is not a revert — check the diff.**
 
 ```
                        before   after   delta   random
@@ -224,6 +230,274 @@ fixes. Breaking the tie with a wrong tiebreaker is worse than leaving it arbitra
 because a systematic bad choice beats a random one only when the systematics are right.
 The tie itself is still a real defect — about 19% of decisions — but the fix has to know
 which card is actually surplus, which needs more than cost-versus-reach.
+
+## Competition difficulty — Phase 1: enablement (2026-09-03)
+
+`sideValue` priced a unit as body + power + HP + shields, with no term for whether the
+unit can act at all. The failure that exposed it: `ash-011`'s free leader action deals 1
+damage to a unit with 2+ remaining HP (so it can never kill), and `lof-063` — in the same
+competitive list — is a 5/5 that can attack ONLY while damaged. The correct play is to
+ping your OWN 5/5 to switch it on. The AI scored that as −3 HP with no upside and pinged
+a harmless enemy 1/4 instead. It was not misjudging the combo; it could not see it.
+
+The term: `SB.attackBlocked(state, unit)` (js/engine.js, extracted from the predicate
+`legalActions` already used, so the two cannot drift) reports why a unit cannot attack,
+ignoring exhaustion. `sideValue` multiplies a blocked unit's power by `W.lockedPower`.
+
+- **0.5, not 0** — a locked unit still deals its power when it is defended into.
+- **0.5, not 1** — an attacker that cannot attack is not an attacker.
+- **Exhaustion is deliberately not a block.** It is the normal turn cycle; pricing it as
+  a defect would argue the AI out of attacking at all.
+
+This generalises past the one card: the same term makes pinging the ENEMY's locked unit
+read as the gift it is, and it will price every future "only while X" unit without
+anything being taught about that card specifically.
+
+Pinned in tests/test-ai.js: it pings its own locked 5/5 over a harmless enemy; it does
+not switch on the enemy's; and a locked unit evaluates below the same unit unlocked.
+Setting `lockedPower` back to 1.0 fails two of the three, so the tests bite.
+
+**Measured: no effect at matrix scale, and it cannot have one.** A/B over the competitive
+matrix (seed `comp1`, 2 games/pairing, 760 games/arm), `lockedPower` 0.5 against 1.0,
+nothing else changed: **6 games out of 1520 changed hands.** Every one of them was in a
+pairing against `deck-c01`, because `deck-c01` is the only competitive list holding
+`lof-063`, and `lof-063` is the only card in a 1527-card pool with `attackOnlyDamaged`.
+
+The term is KEPT: it is correct, it is pinned by tests, it costs one multiply per unit,
+and it fixes a decision watched at the table. But it buys ~nothing on the matrix, and no
+matrix at this card frequency could say otherwise. **A term that fires on one card in
+1527 is a correctness fix, not a strength fix — do not expect winrate from it.**
+
+## Competitive baseline and control — 2026-09-03, seed `comp1`, 2 games/pairing
+
+First measurement of the 20 tournament lists. 760 games/arm, 0 draws, 0 timeouts, 88
+actions/game mean. Seat 1: **48.6%** under the AI, 50.8% under random — initiative stays
+fairly priced on these lists.
+
+**The control is the finding.** Six decks are piloted WORSE THAN RANDOM:
+
+```
+deck                     leader     AI     random    gap
+Zhael's Misfortune       jtl-002   21.1%   50.0%   -28.9
+Voss's Full Hand         law-018   35.5%   57.9%   -22.4
+Skarn's Shadow           lof-009   40.8%   57.9%   -17.1
+Dray's Audit             sec-010   19.7%   35.5%   -15.8
+Wyn's Foresight          twi-004   63.2%   75.0%   -11.8
+Vale's Vow              ts26-002   60.5%   69.7%    -9.2
+                    ... and, at the other end ...
+The Forgemother's Steel  ash-001   73.7%   25.0%   +48.7
+Kael's Wingmen           jtl-012   64.5%   44.7%   +19.7
+Korrin's Run             ash-014   48.7%   30.3%   +18.4
+```
+
+Losing to random is not a missing heuristic — random has none. It means the policy is
+**systematically choosing bad moves** in those archetypes, and two of them read straight
+off their leaders:
+
+- `jtl-002` (worst, -28.9) reuses a *whenDefeated* ability: the deck wants its own units
+  to die. `sideValue` prices every body at +8 plus power and HP, so the AI protects the
+  units whose deaths ARE the engine, and declines the trades the deck is built on.
+- `law-018` (-22.4) mills for credits. Credits are not in `sideValue` at all (see Known
+  gaps), so the AI spends a real resource for a currency it scores as zero — it is paying
+  to make its own position look worse.
+
+Both are missing terms in the evaluator, not missing deck knowledge. That is where the
+next Phase 1 pass goes: the six worse-than-random decks are 30% of the field, and the AI
+is actively throwing those games.
+
+## Competition difficulty — the profile split, and why the matrix cannot judge it
+
+A deck-vs-deck matrix cannot answer "did the AI get better". Every deck plays the same
+policy, so the mean winrate is 50% by construction and all the matrix shows is archetype
+bias moving around. Both Phase 1 measurements ran into this: the death-payoff/currency
+arm moved a dozen decks by several points each (Wyn's Foresight -9.3, Greeve's Favor
++6.6) with no way to read a verdict out of it.
+
+So the weights are now two profiles. easy/mid/hard share the BASE table — unchanged from
+before this work. `competition` is the same machine with the terms the base evaluator is
+blind to. That makes the real question directly measurable:
+
+```
+node tools/ai-balance.mjs --group competitive --difficulty competition --vs hard --seed g1
+```
+
+Each pairing is played twice with the seats swapped, so the result cannot be a seat
+advantage in disguise. **A term earns promotion into the base profile by winning that
+gauntlet.** Not by being sensible — this file records one that was sensible and measured
+backwards.
+
+Competition currently carries: `lockedPower` 0.5, `credit` 3, `force` 5,
+`deathPayoff` 0.5. Frequency in the 20 competitive lists, which is what decides whether
+a term can show up at all:
+
+```
+mechanic            cards in pool   decks running it   median copies
+whenDefeated              46             18/20               6
+force token                7              2/20               4
+credits                    6              2/20               1
+attackOnlyDamaged          1              1/20               2
+```
+
+Only `deathPayoff` can move a matrix. Currency is judged on deck-c07 and deck-c11
+specifically, both currently piloted worse than random.
+
+### Gauntlet 1 — the four terms together: 49.3% of 760 games
+
+A coin flip (SE ~1.8%), so the bundle is not an improvement. But it is not flat either.
+Comparing each deck's gauntlet winrate to its own matrix winrate — where both seats
+played hard, so deck strength cancels — the terms sort the field almost perfectly by how
+well the AI played it BEFORE:
+
+```
+helped                          hurt
+Zhael's Misfortune  +15.8       Tessa's Trust        -23.7
+Dray's Audit         +9.2       Zhal's Coven          -9.2
+Kresh's Achievement  +7.9       Marrow's Manhunt      -6.6
+Greeve's Favor       +6.6       Forgemother's Steel   -5.3
+                    ... 9 helped, 11 hurt, mean -0.65
+```
+
+Three of the four decks the AI played worst improved sharply. The cost landed on decks it
+already piloted well. That is a term right in kind and wrong in magnitude — or one term in
+the bundle pulling the other way.
+
+**Which term, deduced before measuring:** `deck-c03` runs no force, no credits and no
+`attackOnlyDamaged` card, so of the four terms only `deathPayoff` can touch it. The
+-23.7 is `deathPayoff` alone. And `deck-c12` (+15.8) is likewise a deathPayoff-only
+deck. One term produces both the largest gain and the largest loss.
+
+Deck composition says why they differ:
+
+```
+deck        units   whenDefeated copies   share   payoffs
+deck-c12      47            19             40%    buffTemp, draw, damage, tokens
+deck-c13      42            10             24%    binaryChoice, draw, advantage
+deck-c03      52             3              6%    searchDeck
+deck-c01      52             3              6%    heal
+```
+
+Three cards cannot cost 23.7 points, so the damage is not on `deck-c03`'s own side of
+the board. **The term is symmetric**: it discounts the HP of the ENEMY's death-trigger
+units too, which says "be less interested in killing them". Against a field averaging six
+such cards per deck, that is an under-removal bias running all game, and it swamps the
+handful of times `deck-c03` benefits from its own three.
+
+The two halves are separate claims and only one of them looks defensible. Split into
+`deathPayoff` (my units — I should trade them more freely) and `deathPayoffEnemy`
+(their units — should I really want to kill them less?), so each can be measured alone.
+
+### Arm A — `deathPayoff` alone: 49.3%, the same number, the same decks
+
+Identical to the four-term bundle, and per-deck correlation between the two arms is
+**0.968**. One term is the entire effect; `lockedPower`, `credit` and `force` are
+inert at this scale, exactly as their card frequencies said they would be. Anything
+appearing in 1-2 decks of 20 cannot move a 760-game aggregate — measure those per deck or
+not at all.
+
+### READ THIS BEFORE TRUSTING A PER-DECK NUMBER
+
+The per-deck rows above are **38 games each** (19 opponents x 2 seats x 1 game): standard
+error ~8.1%. Across 20 rows, an outlier of +/-16 to 24 points is what chance alone
+produces. Tessa's Trust at -23.7 is 2.9 SE picked out of 20 candidates after the fact;
+Zhael's Misfortune at +15.8 is 1.9 SE. **Neither survives as evidence on its own.** The
+aggregate — 760 games, SE 1.8% — is the only number in a gauntlet run with real power.
+
+Two mechanisms were hypothesised for the -23.7 from those rows, and both were then
+measured and **falsified**:
+
+- *"It stops removing enemy death-trigger units."* Attack share is 21.6% (hard) against
+  21.5% (competition) — unchanged.
+- *"It attacks the wrong targets."* Over 7 games deck-c03 made **62-64 attacks on the
+  base and 4-5 into units**. It is a base-race deck; it barely fights units at all, so
+  target selection cannot be worth 23 points either.
+
+The lesson is not about this term. It is that a 38-game row invites a story, and the story
+will survive right up until it is measured. Aggregate first; only chase a deck-specific
+effect at 6+ games per pairing, where a row is 228 games and SE is 3.3%.
+
+### Phase 1 verdict — the scoreboard
+
+Every arm: competition vs hard, 20 competitive decks, every pairing played twice with the
+seats swapped, 760 decided games, seed `g1`. SE ~1.8%, so anything inside 50 +/- 3.6% is
+a coin flip.
+
+```
+arm                                      weights                          result
+all four terms                           (profile as authored)             49.3%
+deathPayoff alone           lockedPower=1,credit=0,force=0                 49.3%
+everything but deathPayoff  deathPayoff=1                                  50.4%
+own-side discount only      deathPayoffEnemy=1                             49.1%
+own-side, gentler           deathPayoff=0.75,deathPayoffEnemy=1            49.5%
+```
+
+Four forms, four coin flips or worse, including both forms the failure analysis predicted
+would work. When a term loses symmetric, loses one-sided, and loses at a softer
+magnitude, the shape being wrong is no longer the explanation — the claim is.
+
+**deathPayoff is out.** It lost in every form, including the two the analysis predicted
+would fix it. It is not mistuned; the claim itself does not hold up. Set to 1, machinery
+kept, test rewritten to pin the mechanism with the weight temporarily on rather than to
+assert the term is a good idea.
+
+**The other three stay, and are honestly labelled.** They are inert at this scale — 50.4%
+is a coin flip too — because `attackOnlyDamaged` is 1 deck of 20 and force and credits
+are 2 each. They are correctness, not strength, and the frequency table above is the
+reason to expect nothing else from them.
+
+**What Phase 1 actually bought:** one blunder fixed at the table (the Cad Bane ping), the
+force token no longer valued at zero, a harness that can answer "is this AI stronger"
+instead of "is the field balanced", and four hypotheses killed cheaply. No winrate.
+
+That points at depth rather than weights, which is where competition goes next: the engine
+alternates strictly, so a setup-then-payoff line — satisfy a gate this action, use it the
+next — cannot be seen at one ply, because the opponent always acts in between. No weight
+can price what the search cannot reach.
+
+### The exchange search — 62.1% against hard, and the Phase 1 answer
+
+Same gauntlet, same seed, 760 games: **62.1%**. Six point seven standard errors. After
+four weight terms measured at 49-50%, depth was the whole story.
+
+```
+deck spread, competition piloting each list against hard piloting the field
+  best   Forgemother's Steel 78.9%   Kael's Wingmen 73.7%   Vane's Contract 73.7%
+  worst  Zhael's Misfortune  44.7%   Kade's Armada  50.0%   Kresh's        50.0%
+  19 of 20 decks at or above 50%; the one below is 0.65 SE on a 38-game row
+```
+
+0 draws, 0 timeouts, 89 actions/game (unchanged). 8.0s a game against hard's 3.3s.
+
+**Why depth and not weights.** `advanceTurn` alternates strictly, so any line that sets
+something up and cashes it on your next action has an opponent action wedged in the
+middle. At one ply that line does not exist. `hard`'s `bestReplySwing` could price
+their reply but never my answer to it, and the answer is the whole point of a setup.
+No weight can price what the search cannot reach — which is also, in hindsight, why
+four carefully argued terms measured at nothing.
+
+Width is a profile weight (`exchangeWidth`, 0 = off for base difficulties), and the
+curve is steep:
+
+```
+exchangeWidth   vs hard   runtime
+      1          52.6%     4623s
+      3          62.1%     6073s
+      5          (running)
+```
+
+Weighing only the opponent's single best reply captures barely a third of the gain, so
+the breadth of the minimax is doing real work and not merely the extra ply. Note this
+also means the search's value depends on `AI.evaluate` ranking the opponent's options
+sensibly — the weights that bought no winrate on their own are still what makes the
+search's pruning honest.
+
+### Checked and NOT a defect: initiative timing
+
+The fingerprint (tools/ai-fingerprint.mjs, new) showed the AI ending its round by claiming
+initiative on 12.5% of its actions against random's 8.7%, which looked like the missing
+initiative-timing policy biting. It is not. Sampling 38 claims across six games: it takes
+**3.37 actions in the round before claiming** and has **1.18 ready resources unspent**
+when it does. Only 3 of 38 claims came with no actions taken. The gap against random is
+random passing at arbitrary moments, not the AI claiming early. Not pursued.
 
 ## Known gaps (future passes)
 

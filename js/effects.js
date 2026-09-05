@@ -124,11 +124,14 @@
 
   // --- damage / defeat plumbing -------------------------------------------
 
-  SB.damageBase = function (state, playerIdx, amount, why) {
+  // sourceUid (optional) is the unit the damage came from; js/anim.js draws the shot
+  // from it. Combat passes the attacker, effect damage its ctx source.
+  SB.damageBase = function (state, playerIdx, amount, why, sourceUid) {
     if (amount <= 0) return;
     const base = state.players[playerIdx].base;
     base.damage += amount;
-    SB.log(state, { type: 'baseDamage', player: playerIdx, amount: amount, why: why || null, sound: 'hit' });
+    SB.log(state, { type: 'baseDamage', player: playerIdx, amount: amount, why: why || null,
+      source: sourceUid != null ? sourceUid : null, combat: why === 'attack' || why === 'overwhelm', sound: 'hit' });
     const hp = SB.card(base.cardId).hp;
     if (base.damage >= hp && state.winner == null) {
       state.winner = SB.other(playerIdx);
@@ -137,16 +140,21 @@
     }
   };
 
+  function srcOf(ctx) { return ctx && ctx.sourceUid != null ? ctx.sourceUid : null; }
+
   // Deal damage to a unit from a source; shields absorb whole hits.
   SB.damageUnit = function (state, unit, amount, ctx) {
     if (amount <= 0) return;
     if (unit.shields > 0) {
       unit.shields -= 1;
-      SB.log(state, { type: 'shieldPopped', uid: unit.uid, sound: 'shield' });
+      SB.log(state, { type: 'shieldPopped', uid: unit.uid, source: srcOf(ctx), sound: 'shield' });
       return;
     }
     unit.damage += amount;
-    SB.log(state, { type: 'unitDamage', uid: unit.uid, amount: amount, sound: 'hit' });
+    // `source` is the dealing unit's uid (null for sourceless effects). The battle
+    // animation draws the shot from it; SB.log stamps its card id alongside.
+    SB.log(state, { type: 'unitDamage', uid: unit.uid, amount: amount, source: srcOf(ctx),
+      combat: !!(ctx && ctx.combat), sound: 'hit' });
     if (unit.damage >= SB.unitMaxHp(state, unit) && !SB.hasKeyword(state, unit, 'unkillableThisRound')) {
       SB.defeatUnit(state, unit, ctx);
     } else if (ctx && ctx.combat) SB.fireTriggers(state, 'whenCombatDamaged', unit, { sourceUid: unit.uid });
@@ -246,6 +254,17 @@
           combat: ctx && ctx.combat, defenderDamagedNonLeader: ctx && ctx.defenderDamagedNonLeader,
         });
       });
+    });
+  };
+
+  // Drop every queued effect still belonging to this invocation. Used when a cost
+  // inside a branch cannot be paid: the effects it was buying must not resolve for
+  // free (see O.spendResources).
+  SB.cancelInvocation = function (state, ctx) {
+    const inv = ctx && ctx.inv;
+    if (inv == null) return;
+    state.queue = state.queue.filter(function (q) {
+      return !(q.step === 'effect' && q.ctx && q.ctx.inv === inv);
     });
   };
 
@@ -553,7 +572,7 @@
   SB.ops = {
     damage: function (state, item, target) {
       const amt = SB.resolveAmount(state, item, target);
-      if (target.kind === 'base') SB.damageBase(state, target.player, amt, 'effect');
+      if (target.kind === 'base') SB.damageBase(state, target.player, amt, 'effect', srcOf(item.ctx));
       else {
         const u = SB.findUnit(state, target.uid);
         if (u) SB.damageUnit(state, u, amt, item.ctx);
@@ -688,6 +707,10 @@
       if (item.candidates) return; // waiting on a choice
 
       if (item.step !== 'effect') return; // setup/combat steps handled by engine
+      // Ambush is an effect item, but only the engine's queue driver knows how to
+      // offer it (it builds the attack candidates). Hand it back rather than
+      // running its no-op handler and swallowing the attack.
+      if (item.op && item.op.op === 'ambushAttack') return;
 
       const op = item.op;
       if (item.ctx && item.ctx.condition &&
