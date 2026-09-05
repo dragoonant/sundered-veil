@@ -283,13 +283,25 @@ button:disabled { opacity: .4; cursor: default; }
 .pip.aspects { display: flex; gap: .18rem; align-items: center; }
 .aspect-dot { width: .55em; height: .55em; border-radius: 50%; display: inline-block;
               box-shadow: 0 0 3px rgba(0,0,0,.9); }
-.aspect-vigilance  { background: #4d79d6; }
-.aspect-command    { background: #46a06c; }
-.aspect-aggression { background: #d65045; }
-.aspect-cunning    { background: #e0b24a; }
-.aspect-heroism    { background: #e8ecf5; }
-.aspect-villainy   { background: #8a63d6; }
+.aspect-dot.aspect-vigilance  { background: #4d79d6; }
+.aspect-dot.aspect-command    { background: #46a06c; }
+.aspect-dot.aspect-aggression { background: #d65045; }
+.aspect-dot.aspect-cunning    { background: #e0b24a; }
+.aspect-dot.aspect-heroism    { background: #e8ecf5; }
+.aspect-dot.aspect-villainy   { background: #8a63d6; }
 .card-preview .pip { font-size: .85em; }
+
+/* Aspect names inside rules text wear their aspect's color, matching the corner dots
+   (§ card presentation: the card explains itself without a legend). Slightly lighter
+   than the dots, so they stay readable as text over the plate. */
+.aspect-word { font-weight: 600; }
+.aspect-word.aspect-vigilance  { color: #8fb0f0; }
+.aspect-word.aspect-command    { color: #6fc994; }
+.aspect-word.aspect-aggression { color: #f0837a; }
+.aspect-word.aspect-cunning    { color: #eccb7c; }
+.aspect-word.aspect-heroism    { color: #eef1f8; }
+.aspect-word.aspect-villainy   { color: #b598ea; }
+
 
 /* text plate: shadow only, zero background */
 .card-plate {
