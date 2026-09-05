@@ -120,4 +120,24 @@
     T.ok(SB.cardFaceKeywords('fx-wall', SB.findUnit(s, ref.uid), s)
       .some(function (k) { return k.k === 'sentinel'; }), 'and on the board');
   });
+  // Every trait id the card data uses must have a real display name. tr ids are
+  // append-only and assigned by the import tools, while the names are hand-authored in
+  // data/names-4.js — so a new set silently ships cards whose traits render as the
+  // placeholder "TR50" unless something fails first. This is that something.
+  T.add('text: every trait id in the card data has a display name', function () {
+    const used = new Set();
+    Object.keys(SB.cards).forEach(function (id) {
+      (SB.card(id).traits || []).forEach(function (t) { used.add(t); });
+    });
+    T.ok(used.size > 40, 'found the trait ids (' + used.size + ')');
+    const missing = [];
+    used.forEach(function (t) {
+      const name = SB.names.traits[t];
+      // The placeholder file fills every id with its own uppercased id, which reads as a
+      // name to any code that only checks for undefined.
+      if (!name || name === t.toUpperCase()) missing.push(t);
+    });
+    T.eq(missing.sort().join(',') || 'none', 'none', 'traits with no display name');
+  });
+
 })(window.SB = window.SB || {});

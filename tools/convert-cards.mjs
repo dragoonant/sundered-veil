@@ -8,7 +8,7 @@
 // Cards whose behavior is fully expressed by stats+keywords are marked done:true in
 // their packet; everything else needs abilities authored by hand in the data file.
 // Usage: node tools/convert-cards.mjs <scratchDir>
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,12 +18,24 @@ const cards = JSON.parse(readFileSync(join(SCRATCH, 'unique-cards.json'), 'utf8'
 const decks = JSON.parse(readFileSync(join(SCRATCH, 'resolved-decks.json'), 'utf8'));
 
 // ---- traits ---------------------------------------------------------------
+// tr ids are APPEND-ONLY. data/cards-*.js stores them, data/names-4.js gives each one a
+// display name by hand, and both are committed — so renumbering silently repoints every
+// card at another card's traits. This block used to re-sort the whole union on every run,
+// which is exactly how a card ended up printing Item and another Lightsaber. Existing
+// assignments are preserved; only genuinely new traits get the next free number.
+const traitMap = existsSync(join(SCRATCH, 'trait-map.json'))
+  ? JSON.parse(readFileSync(join(SCRATCH, 'trait-map.json'), 'utf8')) : {};
+const before = Object.keys(traitMap).length;
 const traitSet = new Set();
 Object.values(cards).forEach(c => c.traits.forEach(t => traitSet.add(t)));
-const traits = [...traitSet].sort();
-const traitMap = {};
-traits.forEach((t, i) => traitMap[t] = 'tr' + String(i + 1).padStart(2, '0'));
+for (const t of [...traitSet].sort()) {
+  if (!traitMap[t]) traitMap[t] = 'tr' + String(Object.keys(traitMap).length + 1).padStart(2, '0');
+}
 writeFileSync(join(SCRATCH, 'trait-map.json'), JSON.stringify(traitMap, null, 1));
+if (Object.keys(traitMap).length > before) {
+  console.log('new traits: ' + (Object.keys(traitMap).length - before) +
+    ' — add a display name for each in data/names-4.js (tests/test-text.js enforces it)');
+}
 
 // ---- keyword parsing ------------------------------------------------------
 // Match the behavior, not the wording: we only extract the keyword tokens the game

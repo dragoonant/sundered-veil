@@ -159,13 +159,43 @@ for (const r of rows.values()) {
 }
 
 // ---- trait ids ------------------------------------------------------------
-// tr01.. are assigned by tools/convert-cards.mjs as the sorted union of every trait
-// across the imported cards. Rebuilding it the same way here reproduces that mapping
-// exactly, so no committed map is needed.
-const traitSet = new Set();
-for (const [id, r] of rows) if (ourIds.has(id)) r.traits.forEach(t => traitSet.add(t));
+// tr01.. are assigned ONCE, by tools/convert-cards.mjs, which writes the mapping to
+// scratch/trait-map.json. This file used to re-derive the same sorted union and claim it
+// "reproduces that mapping exactly". It does not, and the difference is silent: this tool
+// sees the cards it has source rows for, convert-cards saw the cards it imported, and one
+// trait present in one set and not the other shifts every id after it alphabetically.
+// It shipped exactly that way — cards rendered with traits belonging to other cards
+// entirely, off by one from 'bounty-hunter' onward. Read the map; never re-derive it.
+const traitMapPath = join(SCRATCH, 'trait-map.json');
+if (!existsSync(traitMapPath)) {
+  console.error('missing ' + traitMapPath + ' — run tools/convert-cards.mjs first: it owns the tr id assignment');
+  process.exit(2);
+}
+const slugToId = JSON.parse(readFileSync(traitMapPath, 'utf8'));
+// convert-cards keys the map by the source data's own slugs ('new-republic'); the rows
+// here carry display names ('New Republic').
+// Apostrophes VANISH rather than becoming separators — the source data slugs
+// "Twi'lek" as twilek, not twi-lek, and a near-miss here is exactly the silent
+// mismatch this block exists to catch.
+const slug = t => String(t).toLowerCase().replace(/['’]/g, '')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const traitNames = {};
-[...traitSet].sort().forEach((t, i) => { traitNames['tr' + String(i + 1).padStart(2, '0')] = t; });
+const unmapped = new Set();
+for (const [id, r] of rows) {
+  if (!ourIds.has(id)) continue;
+  for (const t of r.traits) {
+    const trId = slugToId[slug(t)];
+    if (!trId) { unmapped.add(t); continue; }
+    traitNames[trId] = t;
+  }
+}
+if (unmapped.size) {
+  // A trait the cards use but the map has no id for means the two are out of step, which
+  // is the bug this whole block exists to prevent. Fail rather than emit a shifted table.
+  console.error('traits with no id in trait-map.json: ' + [...unmapped].join(', '));
+  console.error('re-run tools/convert-cards.mjs so the map covers the current card set');
+  process.exit(2);
+}
 
 // ---- rules text -----------------------------------------------------------
 // Printed text verbatim, split into the line array SB.cardText returns. Leaders carry
