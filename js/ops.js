@@ -507,7 +507,7 @@
       if (!u || u.exhausted) return;
       u.exhausted = true;
       SB.log(state, { type: 'exhausted', uid: u.uid });
-      const rest = itemStep.budget - (SB.card(u.cardId).cost || 0);
+      const rest = itemStep.budget - SB.costOf(u.cardId);
       if (rest > 0) state.queue.unshift({ step: 'exhaustBudgetPick', player: itemStep.player, budget: rest });
     },
   };
@@ -703,7 +703,7 @@
       const a = mine.owner, b = theirs.owner;
       mine.owner = b; theirs.owner = a;
       SB.log(state, { type: 'controlExchanged', a: mine.uid, b: theirs.uid, notice: true });
-      const cm = SB.card(mine.cardId).cost || 0, ct = SB.card(theirs.cardId).cost || 0;
+      const cm = SB.costOf(mine.cardId), ct = SB.costOf(theirs.cardId);
       if (cm !== ct) {
         // Whoever received the cheaper unit gains the difference in credits.
         const receiverOfCheaper = cm < ct ? b : a;
@@ -900,8 +900,8 @@
     u.upgrades.slice().forEach(function (inst) {
       u.upgrades.splice(u.upgrades.indexOf(inst), 1);
       if (inst.leaderPilot) {
-        const lp = state.players[u.owner].leader;
-        lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+        // Benched, not defeated: the bearer survives, so the leader may deploy again.
+        SB.sidelineLeaderPilot(state, u, inst, { defeated: false });
       } else if (!SB.card(inst.cardId).token) state.players[SB.upgradeOwner(u, inst)].discard.push(inst);
     });
     SB.log(state, { type: 'upgradesDefeated', uid: u.uid, sound: 'destroy' });
@@ -1760,7 +1760,8 @@
       (src.abilities || []).forEach(function (ab) {
         if (ab.trigger !== 'bounty') return;
         SB.log(state, { type: 'bountyCollected', uid: unit.uid, sound: 'claim' });
-        SB.queueEffects(state, collector, ab.effects, { bountyUnitUid: unit.uid, bountyCardId: unit.cardId });
+        SB.queueEffects(state, collector, ab.effects,
+          { viaTrigger: true, cardId: unit.cardId, bountyUnitUid: unit.uid, bountyCardId: unit.cardId });
       });
     });
   };

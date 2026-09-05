@@ -24,6 +24,11 @@
       keywords: [{ k: 'grit' }] },
     'fx-sniper': { id: 'fx-sniper', type: 'unit', arena: 'ground', cost: 3, power: 2, hp: 2, aspects: ['aggression'],
       abilities: [{ trigger: 'onPlay', effects: [{ op: 'damage', amount: 2, target: { who: 'enemy', what: 'unit' } }] }] },
+    // Draws when its attack ENDS: the shape that made a correct interaction read as
+    // three player turns in the log (see 'log: a triggered ability's lines are
+    // attributed to it').
+    'fx-trigger': { id: 'fx-trigger', type: 'unit', arena: 'ground', cost: 2, power: 2, hp: 3, aspects: ['command'],
+      abilities: [{ trigger: 'onAttackEnds', effects: [{ op: 'draw', amount: 1 }] }] },
     'fx-martyr': { id: 'fx-martyr', type: 'unit', arena: 'ground', cost: 2, power: 2, hp: 2, aspects: ['command'],
       abilities: [{ trigger: 'whenDefeated', effects: [{ op: 'draw', amount: 1 }] }] },
     'fx-bolt': { id: 'fx-bolt', type: 'event', cost: 1, aspects: ['aggression'],

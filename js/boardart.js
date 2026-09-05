@@ -88,15 +88,15 @@
   // Four zones are painted with a scene instead of left empty: the two arenas and the
   // two slots that hold a loose pile. Each has a set of interchangeable shots, and
   // which one you get is rolled per game rather than fixed, so a long session does not
-  // play out against the same board. Both players' resource rows draw the SAME roll —
-  // one board, one location, seen from two sides — but the two arenas roll separately.
+  // play out against the same board. The two arenas roll separately.
   const SCENES = 5;                      // shots per set; files are <key>-1..5.webp
   const SLOT_SCENE = { resources: 'slot-res', discard: 'slot-disc' };
-  // The two discard piles roll SEPARATELY, and never to the same shot as each other:
-  // they are small, they sit one above the other, and identical art in both read as
-  // one zone mirrored rather than as two piles belonging to two players. The resource
-  // rows keep a shared scene on purpose — the whole row IS mirrored, deliberately.
-  const PER_SIDE = { discard: 1 };
+  // Every per-side zone rolls SEPARATELY for each player, and never to the same shot as
+  // its opposite number. The resource rows used to share one roll on the theory that the
+  // row is one location mirrored; in play it just read as the same picture twice, which
+  // makes the two banks harder to tell apart at a glance rather than easier. They are
+  // your resources and theirs, so they look like different places now.
+  const PER_SIDE = { discard: 1, resources: 1 };
 
   // Each entry is one roll: a file key (the art set), a seed key (what the
   // no-repeat memory is kept under) and the image nodes that take the result.

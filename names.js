@@ -60,8 +60,13 @@
       gameTitle: 'Starbound Legions',
       gameTagline: 'Two fleets. One war. Only one base left standing.',
       titleHint: 'Click to continue',
-      chooseDeck: 'Choose your legion', chooseDifficulty: 'Opponent skill',
+      chooseDeck: 'Your deck', chooseOppDeck: 'Opponent deck',
+      chooseDifficulty: 'Opponent skill',
       startGame: 'Start the battle',
+      // The deck chooser: a screen of its own, because picking a list is the point of
+      // the tool and a dropdown hides nineteen of the twenty behind a scroll.
+      pickDeckFor: { mine: 'Choose your deck', theirs: "Choose the opponent's deck" },
+      randomDeck: 'Surprise me', deckChooserBack: 'Back', deckCount: 'cards',
       difficulty: { easy: 'Easy', mid: 'Medium', hard: 'Hard', competition: 'Competition' },
       // Deck picker groups and the card-pool format a tournament list was built for.
       deckGroups: { precon: 'Legion decks', competitive: 'Tournament lists' },
@@ -80,9 +85,10 @@
       browseClose: 'Close',
       browseEmpty: 'Nothing here yet.',
       yourDiscard: 'Your discard pile', theirDiscard: 'Opponent discard pile',
-      yourResources: 'Your resources',
+      yourResources: 'Your resources', theirResources: 'Opponent resources',
       browseNewestFirst: 'Most recent first',
       browseResourceNote: 'Face down on the board — only you may look.',
+      browseResourceOver: 'Face down during play; the game is over, so they turn up.',
       // Board zone labels. The board draws these itself now (js/boardart.js); they
       // were pixels baked into the old mat image, which put display text outside
       // this file. Rendered in caps by the board, so written here in normal case.

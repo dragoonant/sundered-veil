@@ -54,6 +54,31 @@ touching every log call site.
 | `sound` | Cue name for the audio layer |
 | `notice` | This line must not be scrolled past (see §4) |
 | `silent` | Carries a cue only; render nothing |
+| `via` | The card whose TRIGGERED ability caused this line (see below) |
+
+### `via` — a consequence is not a turn
+
+A triggered ability's effects are consequences of somebody's action, not actions of their
+own, and printed flat they are indistinguishable from one. An attack whose trigger then
+plays a card and banks a resource logs as:
+
+```
+Mandalorian attacks your base.
+The opponent played Mastery.
+The opponent banked a resource.
+```
+
+which reads as three turns in a row. It was reported as cheating, and the engine was
+right — this is a log defect, and precisely the failure §1 exists to prevent.
+
+`SB.log` stamps `via` automatically while the queue drains a triggered ability
+(`SB.setLogSource`, set from `ctx.viaTrigger`), so no call site opts in. The panel
+indents such lines under the action and prefixes the card that spoke, hoverable like any
+other card reference — omitting the prefix when the line already names that card as its
+own subject.
+
+Only TRIGGERED abilities are attributed. The effects of a card someone played are already
+introduced by the "played X" line above them, and prefixing those would be noise.
 
 ## 2. Log by player index; translate to second person at the last moment
 

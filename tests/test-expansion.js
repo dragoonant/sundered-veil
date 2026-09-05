@@ -364,6 +364,94 @@
     T.ok(s.players[0].hand.some(function (i) { return i.cardId === 'fx-blade'; }), 'the other one is back in hand');
   });
 
+  // ---- a leader piloting a ship belongs to whoever DEPLOYED it -----------------
+  // Seize the enemy ship their leader is flying, kill it, and it must be THEIR leader
+  // that goes back to the sideline. Every consumer used to read the bearer's controller,
+  // so this sidelined the wrong player's leader and marked it defeated for the game.
+  function leaderAboard(s, seat, bearerCardId) {
+    const p = s.players[seat];
+    p.leader.cardId = 'jtl-009';                 // a leader with a pilot side
+    const bearer = T.putOnBoard(s, seat, bearerCardId);
+    p.leader.deployed = 'pilot';
+    const inst = { uid: s.nextUid++, cardId: p.leader.cardId, leaderPilot: true, owner: seat };
+    p.leader.uid = inst.uid;
+    bearer.upgrades.push(inst);
+    return bearer;
+  }
+
+  T.add('expansion: killing a seized ship sidelines ITS leader, not yours', function () {
+    let s = rich(T.game(), 0);
+    const bearer = leaderAboard(s, 1, 'fx-grunt');   // their leader, aboard their unit
+    s.players[0].leader.deployed = false;
+    // Seize it, exactly as the event in the report did, then defeat it.
+    SB.ops.takeControl(s, { controller: 0, op: {}, ctx: {} }, { kind: 'unit', uid: bearer.uid });
+    T.eq(SB.findUnit(s, bearer.uid).owner, 0, 'the ship changed hands');
+    SB.defeatUnit(s, SB.findUnit(s, bearer.uid), {});
+    T.eq(s.players[1].leader.deployed, false, 'THEIR leader left the board');
+    T.ok(s.players[1].leader.defeated, 'and is out for the game, having died aboard');
+    T.eq(s.players[0].leader.deployed, false, 'your leader was never deployed');
+    T.ok(!s.players[0].leader.defeated, 'and is emphatically not defeated');
+    T.ok(!s.players[0].leader.exhausted, 'nor exhausted');
+    const sidelined = s.log.filter(function (l) { return l.type === 'leaderReturned'; });
+    T.eq(sidelined.length, 1, 'one leader was sidelined');
+    T.eq(sidelined[0].player, 1, 'and the log names the right player');
+  });
+
+  T.add('expansion: the ordinary case still works — your own ship, your own leader', function () {
+    let s = rich(T.game(), 0);
+    const bearer = leaderAboard(s, 0, 'fx-grunt');
+    SB.defeatUnit(s, SB.findUnit(s, bearer.uid), {});
+    T.eq(s.players[0].leader.deployed, false, 'your leader left the board');
+    T.ok(s.players[0].leader.defeated, 'out for the game');
+    T.ok(!s.players[1].leader.defeated, 'theirs untouched');
+  });
+
+  // ---- a deployed leader costs its DEPLOY cost -------------------------------
+  // law-132 defeats the unit it hits only if that unit costs 3 or less. A leader card
+  // has no `cost` field at all, so the test read undefined, || 0 made it the cheapest
+  // thing on the board, and a 5-cost leader died to it.
+  function deployLeaderUnit(s, seat, leaderId) {
+    s.players[seat].leader.cardId = leaderId;
+    const u = SB.makeUnit(s, leaderId, seat);
+    u.exhausted = false;
+    s[SB.card(leaderId).deployedSide.arena || 'ground'].push(u);
+    s.players[seat].leader.deployed = true;
+    s.players[seat].leader.uid = u.uid;
+    return u;
+  }
+
+  T.add('expansion: a deployed leader is priced at its deploy cost, not at nothing', function () {
+    T.eq(SB.costOf('jtl-005'), 5, 'the leader costs its deploy cost');
+    T.eq(SB.costOf('fx-grunt'), SB.card('fx-grunt').cost, 'an ordinary unit is unchanged');
+  });
+
+  T.add('expansion: "defeat it if it costs 3 or less" does not defeat a 5-cost leader', function () {
+    let s = T.game();
+    s.active = 1; s.initiative = 1;
+    const lead = deployLeaderUnit(s, 0, 'jtl-005');
+    s.players[1].hand = [];
+    T.putInHand(s, 1, 'law-132');
+    T.giveResources(s, 1, 8);
+    s = T.act(s, { type: 'playCard', cardId: 'law-132' });
+    s = drive(s);
+    const still = SB.findUnit(s, lead.uid);
+    T.ok(still, 'the leader survived');
+    T.ok(still.abilitiesSuppressed, 'and still lost its abilities, which is the rest of the card');
+  });
+
+  T.add('expansion: ...but it still defeats a unit that really does cost 3 or less', function () {
+    let s = T.game();
+    s.active = 1; s.initiative = 1;
+    const cheap = T.putOnBoard(s, 0, 'fx-ambusher');   // cost 3
+    T.eq(SB.card('fx-ambusher').cost, 3, 'the fixture is the cost the test assumes');
+    s.players[1].hand = [];
+    T.putInHand(s, 1, 'law-132');
+    T.giveResources(s, 1, 8);
+    s = T.act(s, { type: 'playCard', cardId: 'law-132' });
+    s = drive(s);
+    T.ok(!SB.findUnit(s, cheap.uid), 'the 3-cost unit died');
+  });
+
   T.add("expansion: the opponent, not the hand owner, picks the card discarded by ash-220", function () {
     let s = rich(T.game(), 1);
     T.putInHand(s, 0, "sor-045");

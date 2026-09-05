@@ -301,14 +301,40 @@
     later(ms(D.impact) + 40, function () { s.remove(); });
   }
 
+  // Damage a card deals to ITSELF has nowhere to travel from. Drawn as a bolt it left
+  // the card and immediately re-entered it backwards, which read as a shot fired from
+  // off-board. Nothing is incoming — the damage is happening INSIDE — so draw it that
+  // way: small charges going off in sequence within the card's own bounds, the work of
+  // somebody already through the door.
+  function sabotage(node, seed, color) {
+    const c = centre(node);
+    const rand = SB.rng('sabotage|' + seed);
+    for (let i = 0; i < 3; i++) {
+      later(i * ms(120), function () {
+        const size = Math.max(c.w, c.h) * (0.26 + rand() * 0.14);
+        const s = sprite('burst', 'fx-impact fx-sabotage is-' + color);
+        // Off-centre on purpose: charges are set in corners, not on the front door.
+        s.style.left = (c.r.left + c.w * (0.18 + rand() * 0.64) - size / 2) + 'px';
+        s.style.top = (c.r.top + c.h * (0.18 + rand() * 0.64) - size / 2) + 'px';
+        s.style.width = size + 'px'; s.style.height = size + 'px';
+        s.style.setProperty('--dur', ms(D.impact) + 'ms');
+        layer().appendChild(s);
+        job.trash.push(s);
+        later(ms(D.impact) + 40, function () { s.remove(); });
+      });
+    }
+  }
+
   // The moment a hit lands: sound, flash, shake, number, and the card's stats change.
-  function land(hit, next, color, melee) {
+  // `inside`: the source and the target are the same card (see sabotage).
+  function land(hit, next, color, melee, inside) {
     const node = nodeFor(hit.to, job.humanSeat);
     if (hit.to.kind === 'base') sfx('baseHit');
     else if (hit.shield) sfx('shield');
     else sfx(melee ? 'slash' : 'laserHit');
     if (!node) { return; }
-    impact(node, hit.shield ? 'shield' : (melee ? 'slash' : 'burst'), color);
+    if (inside && !hit.shield) sabotage(node, (hit.to.player != null ? 'p' + hit.to.player : 'u' + hit.to.uid) + '|' + (hit.amount || 0), color);
+    else impact(node, hit.shield ? 'shield' : (melee ? 'slash' : 'burst'), color);
     shake(node);
     if (hit.shield) floatNumber(node, SB.names.ui.animShield || '◈', 'is-shield');
     else if (hit.amount > 0) floatNumber(node, '−' + hit.amount, hit.to.kind === 'base' ? 'is-base' : '');
@@ -320,6 +346,13 @@
     const a = centre(fromNode);
     const toNode = nodeFor(hit.to, job.humanSeat);
     if (!toNode) { land(hit, next, color, false); cb(); return; }
+    if (toNode === fromNode) {
+      // No distance to cross: the bolt's travel would resolve to a negative offset and
+      // fly out the back of the card.
+      land(hit, next, color, false, true);
+      later(ms(D.impact), cb);
+      return;
+    }
     const b = centre(toNode);
     const dx = b.x - a.x, dy = b.y - a.y;
     const dist = Math.sqrt(dx * dx + dy * dy);

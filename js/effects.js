@@ -73,8 +73,8 @@
           const isPilot = SB.unitTraits(state, u).indexOf('tr30') >= 0;
           if (!isPilot && SB.pilotCount(state, u) === 0) return;
         }
-        if (sel.maxCost != null && SB.card(u.cardId).cost > sel.maxCost) return;
-        if (sel.minCost != null && SB.card(u.cardId).cost < sel.minCost) return;
+        if (sel.maxCost != null && SB.costOf(u.cardId) > sel.maxCost) return;
+        if (sel.minCost != null && SB.costOf(u.cardId) < sel.minCost) return;
         if (sel.minPower != null && SB.unitPower(state, u) < sel.minPower) return;
         if (sel.maxPower != null && SB.unitPower(state, u) > sel.maxPower) return;
         if (sel.maxCostRefPlayed) {
@@ -162,8 +162,36 @@
 
   // An upgrade belongs to whoever played it, which is not always the bearer's
   // controller (bounty upgrades go on enemy units). It returns to ITS owner.
+  // What a card in play COSTS, for every "costs N or less" test. A leader card carries
+  // deployCost and no `cost` at all, so reading .cost gave undefined -- which || 0 turns
+  // into the cheapest possible unit, and which comparisons silently pass either way
+  // (undefined > 3 is false). A 5-cost deployed leader was being defeated by an event
+  // that only kills units costing 3 or less. A leader unit's cost is its deploy cost.
+  SB.costOf = function (cardId) {
+    const c = SB.card(cardId);
+    if (c.cost != null) return c.cost;
+    if (c.deployCost != null) return c.deployCost;
+    return 0;
+  };
+
   SB.upgradeOwner = function (unit, inst) {
     return inst.owner != null ? inst.owner : unit.owner;
+  };
+
+  // A leader deployed as a pilot goes back to ITS OWN player's sideline, whoever happens
+  // to control the ship when it dies. Five call sites each read the bearer's controller
+  // instead, so seizing a unit carrying the enemy's leader and then killing it sidelined
+  // YOUR leader and marked it defeated — no redeploy for the rest of the game — while
+  // theirs stayed deployed on a unit that no longer existed. One helper now owns the rule.
+  // defeated: leader is out for the game (its bearer died) rather than merely benched.
+  // log: the callers that were silent stay silent.
+  SB.sidelineLeaderPilot = function (state, bearer, inst, opts) {
+    const who = SB.upgradeOwner(bearer, inst);
+    const lp = state.players[who].leader;
+    lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
+    if (!opts || opts.defeated !== false) lp.defeated = true;
+    if (opts && opts.log) SB.log(state, { type: 'leaderReturned', player: who });
+    return lp;
   };
 
   SB.defeatUnit = function (state, unit, ctx) {
@@ -190,10 +218,7 @@
     // Upgrades go to their owner's discard (tokens vanish; leader pilots flip back).
     unit.upgrades.forEach(function (inst) {
       if (inst.leaderPilot) {
-        const lp = state.players[unit.owner].leader;
-        lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-        lp.defeated = true; // defeated along with its bearer: no redeploy
-        SB.log(state, { type: 'leaderReturned', player: unit.owner });
+        SB.sidelineLeaderPilot(state, unit, inst, { log: true }); // no redeploy: it died aboard
       } else if (!SB.card(inst.cardId).token) {
         state.players[SB.upgradeOwner(unit, inst)].discard.push(inst);
       }
@@ -244,6 +269,9 @@
           unit.triggerUsedRound = state.round;
         }
         SB.queueEffects(state, unit.owner, ab.effects, {
+          // viaTrigger: this ability spoke up on its own, so the log attributes its
+          // lines to it instead of printing them as if the player chose each one.
+          viaTrigger: true,
           sourceUid: unit.uid, cardId: unit.cardId, condition: ab.condition,
           playedCardId: ctx && ctx.playedCardId, bearerUid: ctx && ctx.bearerUid,
           attackerUid: ctx && ctx.attackerUid, attackTarget: ctx && ctx.attackTarget,
@@ -688,9 +716,7 @@
       u.upgrades.forEach(function (inst) {
         if (inst.leaderPilot) {
           // Bounced bearer: its upgrades are defeated, the leader pilot included.
-          const lp = state.players[u.owner].leader;
-          lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-          lp.defeated = true;
+          SB.sidelineLeaderPilot(state, u, inst);
         } else if (!SB.card(inst.cardId).token) owner.discard.push(inst);
       });
       SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });
@@ -702,8 +728,15 @@
   // Advance queue[0] as far as possible. Returns when the queue is empty or the
   // head item needs a player choice (head.candidates set).
   SB.drainQueue = function (state) {
+    // The ambient log source is restored on every exit path, including the several
+    // returns below that park the queue on a pending choice.
+    const prevLogSource = SB.getLogSource();
+    try {
     while (state.queue.length > 0 && state.winner == null) {
       const item = state.queue[0];
+      // Only a TRIGGERED ability speaks for itself. The effects of a card you just
+      // played are already introduced by the "you played X" line above them.
+      SB.setLogSource(item.ctx && item.ctx.viaTrigger ? item.ctx.cardId : null);
       if (item.candidates) return; // waiting on a choice
 
       if (item.step !== 'effect') return; // setup/combat steps handled by engine
@@ -779,5 +812,6 @@
       state.queue.shift();
       SB.execOp(state, item, null);
     }
+    } finally { SB.setLogSource(prevLogSource); }
   };
 })(window.SB = window.SB || {});
