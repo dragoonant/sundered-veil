@@ -27,6 +27,63 @@
   function playableDecks() {
     return Object.keys(SB.decks).filter(function (d) { return d.indexOf('fixture') < 0; });
   }
+  function deckLabel(d) {
+    const fmt = SB.decks[d].format
+      ? ' (' + (SB.names.ui.format[SB.decks[d].format] || SB.decks[d].format) + ')' : '';
+    return (SB.names.decks[d] || d) + fmt;
+  }
+  // Random draws from the tournament lists only. The starters and two-player sets are
+  // teaching decks — worth picking deliberately, never worth being handed by accident
+  // when the point of the exercise is testing a real list.
+  function randomDeck(notThis) {
+    const pool = playableDecks().filter(function (d) {
+      return d !== notThis && SB.decks[d].group === 'competitive';
+    });
+    if (!pool.length) return playableDecks()[0];   // a build with no lists still starts
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // Hovering a deck for a beat shows the two cards its name does not: its leader and its
+  // base. Those decide how a list opens and what it is trying to survive to, and picking
+  // between twenty names without them is picking blind.
+  const PEEK_MS = 600;
+  function clearPeek() {
+    const old = document.querySelector('.deck-peek');
+    if (old) old.remove();
+  }
+  function attachDeckPeek(btn, deckId) {
+    let timer = null;
+    function show() {
+      clearPeek();
+      const dk = SB.decks[deckId];
+      const panel = el('div', 'deck-peek');
+      [dk.leader, dk.base].forEach(function (id) {
+        if (id) panel.appendChild(SB.renderCard({ cardId: id }, { size: 'hand' }));
+      });
+      document.body.appendChild(panel);
+      // Beside the button, flipped to the other side when it would run off screen, and
+      // clamped so a deck near the bottom of a long list still shows both cards whole.
+      const r = btn.getBoundingClientRect(), p = panel.getBoundingClientRect();
+      let left = r.right + 12;
+      if (left + p.width > window.innerWidth - 8) left = r.left - p.width - 12;
+      panel.style.left = Math.max(8, left) + 'px';
+      panel.style.top = Math.max(8, Math.min(r.top + r.height / 2 - p.height / 2,
+        window.innerHeight - p.height - 8)) + 'px';
+    }
+    function arm() { clearTimeout(timer); timer = setTimeout(show, PEEK_MS); }
+    function disarm() { clearTimeout(timer); clearPeek(); }
+    btn.addEventListener('mouseenter', arm);
+    btn.addEventListener('mouseleave', disarm);
+    btn.addEventListener('focus', arm);          // keyboard parity, as everywhere else
+    btn.addEventListener('blur', disarm);
+    btn.addEventListener('click', disarm);
+  }
+
+  // Both sides are chosen here. This is a testbed for the mechanics and the lists, not
+  // a campaign: the interesting question is "how does THIS deck play against THAT one",
+  // which a fixed opponent cannot answer. Opening on two random decks means the button
+  // that starts a match is always live — nobody has to choose anything to see a game.
+  const chosen = { mine: null, theirs: null };
 
   // ---- the screens ---------------------------------------------------------
 
@@ -38,36 +95,75 @@
     return wrap;
   }
 
-  function picker() {
-    const box = el('div', 'title-picker');
-    box.appendChild(el('h1', 'title-name title-name-small', SB.names.ui.gameTitle));
+  // A slot's button: the deck it currently holds, and a whole screen behind it.
+  function deckSlot(side, labelText) {
+    const row = el('div', 'title-field');
+    row.appendChild(el('span', 'title-field-label', labelText));
+    const btn = el('button', 'title-deck-btn');
+    btn.id = 'deck-btn-' + side;
+    function paint() { btn.textContent = deckLabel(chosen[side]); }
+    paint();
+    btn.onclick = function () {
+      openChooser(side, function (picked) { chosen[side] = picked; paint(); });
+    };
+    row.appendChild(btn);
+    return row;
+  }
 
-    const deckRow = el('label', 'title-field');
-    deckRow.appendChild(el('span', 'title-field-label', SB.names.ui.chooseDeck));
-    const deck = el('select', 'title-select');
-    deck.id = 'deck-select';
-    // Two groups: the prebuilt legions, then the tournament lists (data/decks.js
-    // group:'competitive'), each of those labelled with its format so a player knows
-    // which card pool it was built for. Labels come from names.js like everything else.
+  // The chooser: every deck as its own large button, grouped, over the same title art.
+  // It replaces the picker rather than floating above it, so nothing is half-covered.
+  function openChooser(side, done) {
+    const screen = $('title-screen');
+    const box = el('div', 'title-picker deck-chooser');
+    box.appendChild(el('h1', 'title-name title-name-small', SB.names.ui.pickDeckFor[side]));
+
     const groups = [['precon', []], ['competitive', []]];
     playableDecks().forEach(function (d) {
-      const g = SB.decks[d].group === 'competitive' ? 1 : 0;
-      groups[g][1].push(d);
+      groups[SB.decks[d].group === 'competitive' ? 1 : 0][1].push(d);
     });
+    function close(picked) {
+      clearPeek();                                // it lives on <body>, not on the screen
+      if (picked) done(picked);
+      screen.textContent = '';
+      screen.appendChild(picker());
+    }
     groups.forEach(function (pair) {
       if (!pair[1].length) return;
-      const og = document.createElement('optgroup');
-      og.label = SB.names.ui.deckGroups[pair[0]];
+      box.appendChild(el('div', 'deck-group-label', SB.names.ui.deckGroups[pair[0]]));
+      const grid = el('div', 'deck-grid');
       pair[1].forEach(function (d) {
-        const o = document.createElement('option');
-        const fmt = SB.decks[d].format ? ' (' + (SB.names.ui.format[SB.decks[d].format] || SB.decks[d].format) + ')' : '';
-        o.value = d; o.textContent = (SB.names.decks[d] || d) + fmt;
-        og.appendChild(o);
+        const b = el('button', 'deck-choice' + (d === chosen[side] ? ' is-chosen' : ''));
+        b.appendChild(el('span', 'deck-choice-name', SB.names.decks[d] || d));
+        const meta = [];
+        if (SB.decks[d].format) meta.push(SB.names.ui.format[SB.decks[d].format] || SB.decks[d].format);
+        meta.push(SB.decks[d].cards.length + ' ' + SB.names.ui.deckCount);
+        b.appendChild(el('span', 'deck-choice-meta', meta.join(' · ')));
+        b.onclick = function () { close(d); };
+        attachDeckPeek(b, d);
+        grid.appendChild(b);
       });
-      deck.appendChild(og);
+      box.appendChild(grid);
     });
-    deckRow.appendChild(deck);
-    box.appendChild(deckRow);
+
+    const row = el('div', 'deck-chooser-actions');
+    const rnd = el('button', 'title-select-btn', SB.names.ui.randomDeck);
+    rnd.onclick = function () { close(randomDeck(null)); };
+    const back = el('button', 'title-select-btn', SB.names.ui.deckChooserBack);
+    back.onclick = function () { close(null); };
+    row.appendChild(rnd); row.appendChild(back);
+    box.appendChild(row);
+
+    screen.textContent = '';
+    screen.appendChild(box);
+  }
+
+  function picker() {
+    if (!chosen.mine) chosen.mine = randomDeck(null);
+    if (!chosen.theirs) chosen.theirs = randomDeck(chosen.mine);
+    const box = el('div', 'title-picker');
+    box.appendChild(el('h1', 'title-name title-name-small', SB.names.ui.gameTitle));
+    box.appendChild(deckSlot('mine', SB.names.ui.chooseDeck));
+    box.appendChild(deckSlot('theirs', SB.names.ui.chooseOppDeck));
 
     const diffRow = el('label', 'title-field');
     diffRow.appendChild(el('span', 'title-field-label', SB.names.ui.chooseDifficulty));
@@ -76,14 +172,16 @@
     ['easy', 'mid', 'hard', 'competition'].forEach(function (k) {
       const o = document.createElement('option');
       o.value = k; o.textContent = SB.names.ui.difficulty[k];
-      if (k === 'mid') o.selected = true;
+      // Competition is the default: it is the only difficulty measured to play every
+      // list competently (docs/ai.md), which is what a deck test needs from an opponent.
+      if (k === 'competition') o.selected = true;
       diff.appendChild(o);
     });
     diffRow.appendChild(diff);
     box.appendChild(diffRow);
 
     const start = el('button', 'title-start', SB.names.ui.startGame);
-    start.onclick = function () { newGame(deck.value, diff.value); };
+    start.onclick = function () { newGame(chosen.mine, chosen.theirs, diff.value); };
     box.appendChild(start);
     return box;
   }
@@ -115,14 +213,7 @@
     });
   }
 
-  function newGame(deckId, difficulty) {
-    // The opponent draws from the same group as the player's pick: a legion deck meets
-    // a legion deck, a tournament list meets a tournament list.
-    const group = SB.decks[deckId].group || 'precon';
-    const others = playableDecks().filter(function (d) {
-      return d !== deckId && (SB.decks[d].group || 'precon') === group;
-    });
-    const aiDeck = others[Math.floor(Math.random() * others.length)];
+  function newGame(deckId, aiDeck, difficulty) {
     // The first real user gesture of the page happens on this button, which is what
     // browsers wait for before letting audio start.
     SB.sound.reset();

@@ -1011,6 +1011,45 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   font-weight: 700; color: var(--muted); margin-bottom: .3rem;
 }
 .title-select { width: 100%; font-size: .95rem; padding: .55rem .7rem; }
+/* A slot's current deck: a button, because behind it is a screen, not a list. */
+.title-deck-btn {
+  width: 100%; text-align: left; font-size: 1rem; font-weight: 600;
+  padding: .6rem .75rem; background: rgba(255,255,255,.05); border-color: var(--line);
+}
+.title-deck-btn:hover { background: rgba(255,255,255,.1); border-color: #4b74b8; }
+.title-deck-btn::after { content: '…'; float: right; opacity: .5; }
+
+/* The chooser screen: every deck legible at once, which is the whole point of it. */
+.deck-chooser { min-width: min(58rem, 94vw); max-height: 86vh; overflow-y: auto; }
+.deck-group-label {
+  text-align: left; font-size: .66rem; text-transform: uppercase; letter-spacing: .16em;
+  font-weight: 700; color: var(--muted); margin: 1.1rem 0 .45rem;
+}
+.deck-grid {
+  display: grid; gap: .5rem;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+}
+.deck-choice {
+  display: flex; flex-direction: column; gap: .18rem; align-items: flex-start;
+  text-align: left; padding: .7rem .8rem; min-height: 3.6rem;
+  background: rgba(255,255,255,.05); border-color: var(--line);
+}
+.deck-choice:hover { background: rgba(75,116,184,.28); border-color: #4b74b8; }
+.deck-choice.is-chosen { border-color: var(--accent); background: rgba(255,209,102,.12); }
+.deck-choice-name { font-weight: 700; font-size: .92rem; line-height: 1.15; }
+.deck-choice-meta { font-size: .68rem; color: var(--muted); letter-spacing: .04em; }
+.deck-chooser-actions { display: flex; gap: .5rem; margin-top: 1.3rem; }
+.title-select-btn { flex: 1; padding: .55rem 1rem; font-size: .9rem; }
+
+/* The hover peek: a deck's leader and base, side by side, out of the way of the cursor. */
+.deck-peek {
+  position: fixed; z-index: 120; display: flex; gap: .5rem; pointer-events: none;
+  padding: .5rem; border-radius: 12px; background: rgba(8,11,18,.94);
+  border: 1px solid var(--line); box-shadow: 0 18px 60px rgba(0,0,0,.75);
+  animation: deck-peek-in 140ms ease-out;
+}
+@keyframes deck-peek-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+
 .title-start {
   margin-top: .8rem; width: 100%; background: #35558a; border-color: #4b74b8;
   font-size: 1rem; font-weight: 700; padding: .7rem 1rem; letter-spacing: .05em;
