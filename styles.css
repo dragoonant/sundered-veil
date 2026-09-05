@@ -1085,6 +1085,19 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   18%  { transform: scale(1.05) rotate(0deg); opacity: 1; }
   100% { transform: scale(1.25) rotate(6deg); opacity: 0; }
 }
+/* charges going off inside a card that damaged itself: quicker and dirtier than an
+   impact from outside, and it does not rotate — nothing arrived to knock it askew. */
+.fx-sabotage { animation-name: fx-sabotage; animation-duration: calc(var(--dur, 460ms) * .8); }
+.fx-sabotage.no-sprite {
+  background: radial-gradient(circle, #fff 0%, #ffd08a 25%, rgba(255,90,30,.55) 50%, transparent 72%);
+}
+@keyframes fx-sabotage {
+  0%   { transform: scale(.2); opacity: 0; }
+  15%  { transform: scale(1); opacity: 1; }
+  55%  { transform: scale(.9); opacity: .85; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
 /* the smoke on a dying card lingers for the whole fall */
 .fx-smoke { animation: fx-smoke var(--dur, 1100ms) ease-out forwards; mix-blend-mode: screen; }
 .fx-smoke.no-sprite { border-radius: 50%; background: radial-gradient(circle, rgba(255,200,150,.8) 0%, rgba(120,120,130,.5) 40%, transparent 70%); }
