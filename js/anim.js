@@ -37,6 +37,9 @@
     defeatFly: 850,   // shrinking into the discard pile
     discardFly: 650,  // an event / hand card sliding to the pile
     spotWait: 700,    // let a played card's spotlight land before firing from it
+    blastCharge: 750, // the doomed base glowing and cracking open before it goes
+    blastBoom: 1300,  // the flash, the shockwave ring and the debris
+    blastHold: 1000,  // the beat of quiet after the planet, before the end video
   };
   const RATE_QUICK = 0.45;
 
@@ -69,6 +72,7 @@
     const fresh = next.log.slice(fromLog);
     const strikes = [];
     const gones = [];
+    let blast = null;              // the base that died, when this apply ended the match
     let spot = null, spotPlayer = null;
     const actor = SB.whoActs(prev);
 
@@ -133,6 +137,10 @@
         case 'discarded':
           gones.push({ kind: 'handDiscard', cardId: l.cardId, player: l.player });
           break;
+        // The killing blow: a base is destroyed, so its planet goes with it.
+        case 'gameOver':
+          if (l.winner === 0 || l.winner === 1) blast = { kind: 'baseBlast', player: 1 - l.winner };
+          break;
       }
     });
 
@@ -140,6 +148,7 @@
     strikes.forEach(function (s) { delete s.key; steps.push(s); });
     gones.forEach(function (g) { steps.push(g); });
     if (spot && SB.card(spot).type === 'event') steps.push({ kind: 'eventToDiscard', cardId: spot, player: spotPlayer });
+    if (blast) steps.push(blast);      // always last: nothing follows a dead planet
     // A spotlight is landing at the same time: let it arrive before anything fires
     // from it, or the bolt leaves a card that is still flying to the middle.
     if (steps.length && spot) steps.unshift({ kind: 'wait', ms: D.spotWait });
@@ -482,6 +491,41 @@
     flyTo(freshCard(step.cardId), rect, slot('discard', step.player, job.humanSeat), ms(D.discardFly), 'discard', cb);
   }
 
+  // ---- the planet goes: the finishing blow on a base ----
+  // Drawn in front of the dead base, not on top of a card that leaves: the base
+  // stays where it is and the planet blows apart over it. Composed from CSS layers
+  // (glowing core, white flash, the equatorial shockwave ring, debris shards) so it
+  // needs no sprite; the pieces read the two durations off the wrapper.
+  function playBaseBlast(step, cb) {
+    const node = nodeFor({ kind: 'base', player: step.player }, job.humanSeat);
+    const charge = ms(D.blastCharge), boom = ms(D.blastBoom);
+    // The hold is the caller's one second of quiet, deliberately NOT scaled by the
+    // speed setting: it is a pause to let the picture land, not part of the picture.
+    const after = boom + D.blastHold;
+    if (!node) { later(after, cb); return; }
+    const c = centre(node);
+    const size = Math.max(c.w, c.h) * 2.6;
+    const wrap = el('div', 'fx-planet-blast');
+    wrap.style.left = (c.x - size / 2) + 'px'; wrap.style.top = (c.y - size / 2) + 'px';
+    wrap.style.width = size + 'px'; wrap.style.height = size + 'px';
+    wrap.style.setProperty('--charge', charge + 'ms');
+    wrap.style.setProperty('--boom', boom + 'ms');
+    ['pb-planet', 'pb-cracks', 'pb-flash', 'pb-ring', 'pb-ring pb-ring-2'].forEach(function (cls) {
+      wrap.appendChild(el('div', cls));
+    });
+    for (let i = 0; i < 10; i++) {
+      const sh = el('div', 'pb-shard');
+      sh.style.setProperty('--a', (i * 36 + (i % 3) * 7) + 'deg');
+      wrap.appendChild(sh);
+    }
+    layer().appendChild(wrap);
+    job.trash.push(wrap);
+    sfx('baseHit');
+    shake(node);
+    later(charge, function () { sfx('defeat'); shake(node); });
+    later(after, function () { wrap.remove(); cb(); });
+  }
+
   // ---- the sequencer ----
   function later(delay, fn) {
     if (!job) return;
@@ -527,6 +571,7 @@
         case 'upgradeGone': playUpgradeGone(s, next, next2); break;
         case 'eventToDiscard': playEventToDiscard(s, next, next2); break;
         case 'handDiscard': playHandDiscard(s, next, next2); break;
+        case 'baseBlast': playBaseBlast(s, step); break;   // last step: no beat gap after it
         default: step();
       }
     }

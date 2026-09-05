@@ -46,13 +46,22 @@
   function settle(prev, before) {
     const steps = SB.anim ? SB.anim.plan(prev, UI.state, before, UI.humanSeat) : [];
     const animated = !!(SB.anim && SB.anim.willAnimate(steps));
-    SB.sound && SB.sound.play(UI.state, animated);
+    // The match ended in this apply and we are drawing it: the ending music and the
+    // end-of-match video wait until the planet has finished blowing up (or the
+    // player has clicked through it), instead of cutting over the animation.
+    const holdEnd = animated && SB.isTerminal(UI.state);
+    SB.sound && SB.sound.play(UI.state, animated, holdEnd);
     spotlightNewPlays(before);
     if (!animated) { UI.render(); UI.maybeAI(); return; }
-    SB.anim.run(steps, UI.state, UI.humanSeat, function () { UI.render(); UI.maybeAI(); });
+    SB.anim.run(steps, UI.state, UI.humanSeat, function () {
+      UI.render();
+      if (holdEnd && SB.sound && SB.sound.playDeferredEnd) SB.sound.playDeferredEnd();
+      UI.maybeAI();
+    });
   }
 
   UI.undo = function () {
+    if (SB.sound && SB.sound.dropDeferredEnd) SB.sound.dropDeferredEnd();
     if (SB.anim) SB.anim.skip();
     if (SB.endVideo) SB.endVideo.reset();
     while (UI.history.length > 0) {

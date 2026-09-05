@@ -129,6 +129,23 @@
     T.eq(steps[steps.length - 1].cardId, 'fx-bolt', 'that event');
   });
 
+  T.add('anim: the killing blow on a base ends with the planet going up', function () {
+    let s = duel('planet');
+    const me = s.active, foe = SB.other(me);
+    const a = T.putOnBoard(s, me, 'fx-grunt');            // 2 power
+    a.ready = true; a.exhausted = false; a.justPlayed = false;
+    const base = s.players[foe].base;
+    base.damage = SB.card(base.cardId).hp - 1;            // one hit from dead
+    const before = s.log.length;
+    const n = T.act(s, { type: 'attack', attacker: a.uid, target: { kind: 'base', player: foe } });
+    T.eq(n.winner, me, 'the base fell');
+    const steps = planOf(s, n, before);
+    const last = steps[steps.length - 1];
+    T.eq(last.kind, 'baseBlast', 'the blast is the final step');
+    T.eq(last.player, foe, 'over the base that died');
+    T.eq(kinds(steps).filter(function (k) { return k === 'baseBlast'; }).length, 1, 'exactly one planet');
+  });
+
   // The planner sees every log type real games produce. It must never throw, and
   // every step it emits must point at something the board can draw.
   T.add('anim: the planner survives whole games across the deck registry', function () {
@@ -146,13 +163,17 @@
         const steps = SB.anim.plan(s, n, before, 0);
         applies++;
         steps.forEach(function (st) {
-          T.ok(['wait', 'strike', 'defeat', 'upgradeGone', 'eventToDiscard', 'handDiscard'].indexOf(st.kind) >= 0, 'known kind ' + st.kind);
+          T.ok(['wait', 'strike', 'defeat', 'upgradeGone', 'eventToDiscard', 'handDiscard', 'baseBlast'].indexOf(st.kind) >= 0, 'known kind ' + st.kind);
           if (st.kind === 'strike') {
             T.ok(st.from && st.from.kind, 'strike has an origin');
             T.ok(st.hits.length > 0, 'strike has hits');
             T.ok(st.style === 'melee' || st.style === 'ranged', 'style set');
             T.ok(['red', 'blue', 'gold'].indexOf(st.color) >= 0, 'colour set');
             drawn++;
+          }
+          if (st.kind === 'baseBlast') {
+            T.eq(st.player, SB.other(n.winner), 'the planet that goes up is the loser\'s');
+            T.eq(st, steps[steps.length - 1], 'and nothing is drawn after it');
           }
         });
         s = n;

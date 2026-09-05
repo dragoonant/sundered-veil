@@ -227,10 +227,16 @@
     }
   }
 
-  function updateMusic(state) {
+  // The finale the animation still owes us: js/anim.js is drawing the planet that
+  // ended the match, so the ending music and the end-of-match video wait for it.
+  let deferredEnd = null;
+
+  function updateMusic(state, deferEnd) {
     if (!state || !Music.started || muted) return;
     if (SB.isTerminal(state)) {
-      playEnding(state.winner === (SB.ui ? SB.ui.humanSeat : 0));
+      const win = state.winner === (SB.ui ? SB.ui.humanSeat : 0);
+      if (deferEnd) { deferredEnd = win; return; }
+      playEnding(win);
       return;
     }
     if (Music.ended) return;
@@ -274,7 +280,9 @@
     // Called by the UI after every apply: SFX for new log entries + music tier.
     // `animated` = js/anim.js is about to draw this apply and will voice the battle
     // tags itself when each picture happens, so they are left alone here.
-    play: function (state, animated) {
+    // deferEnd: the caller (js/ui.js) is about to animate the match-ending blow and
+    // will call playDeferredEnd() once the planet has finished going up.
+    play: function (state, animated, deferEnd) {
       const fresh = state.log.slice(lastLogLen);
       lastLogLen = state.log.length;
       if (!muted) {
@@ -286,10 +294,20 @@
           SB.sound.sfx(ANIM_OWNED[l.sound] || l.sound);
         });
       }
-      updateMusic(state);
+      updateMusic(state, deferEnd);
+    },
+    // Undoing past the end: the finale we were holding is no longer owed.
+    dropDeferredEnd: function () { deferredEnd = null; },
+    // The end-of-match animation is over (played out or skipped): music and video now.
+    playDeferredEnd: function () {
+      if (deferredEnd == null) return;
+      const win = deferredEnd;
+      deferredEnd = null;
+      playEnding(win);
     },
     reset: function () {
       lastLogLen = 0;
+      deferredEnd = null;
       Music.ended = false;
       if (SB.endVideo) SB.endVideo.reset();
       fadeOutCurrent(true);
