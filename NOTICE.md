@@ -4,6 +4,14 @@ This is a personal, non-commercial fan project implementing the *game mechanics*
 Star Wars: Unlimited trading card game so they can be played against an AI in a browser.
 Game mechanics and rules are functional systems and are not subject to copyright.
 
+It is a **testbed for those mechanics and for deck lists**, not a game to be played
+through. The operator chooses BOTH sides before every match — their own deck and the
+opponent's — from the same screen; there is no campaign, no progression, no unlocks, no
+persistent player identity, and nothing to win beyond the match in front of you. Its
+purpose is to answer "does this interaction resolve correctly, and how does this list play
+against that one", which is why the AI opponent is measured against the deck matrix
+(docs/ai.md) rather than tuned to be fun to beat.
+
 What the project contains, and where:
 
 - **Card, deck and trait names, and printed rules text of the published game** appear in

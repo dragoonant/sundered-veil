@@ -76,6 +76,41 @@
     return e;
   }
 
+  // Aspect words in generated rules text carry the same color as the aspect dots in
+  // the corner, so "Command" reads as the green dot without needing a legend. Built
+  // from names.js so a renamed aspect stays matched, and case-sensitive, because the
+  // generic lowercase "aspect" that prose uses is not one of them.
+  let aspectRe = null;
+  function aspectWordRe() {
+    if (!aspectRe) {
+      const words = Object.keys(SB.names.aspects).map(function (a) {
+        return SB.names.aspects[a] || a;
+      });
+      aspectRe = new RegExp(String.raw`\b(` + words.join('|') + String.raw`)\b`, 'g');
+    }
+    return aspectRe;
+  }
+
+  const ASPECT_BY_NAME = {};
+  Object.keys(SB.names.aspects).forEach(function (a) {
+    ASPECT_BY_NAME[SB.names.aspects[a] || a] = a;
+  });
+
+  // Same as el(), but aspect names inside the text become colored spans.
+  function elAspects(tag, cls, text) {
+    const e = el(tag, cls);
+    const re = aspectWordRe();
+    re.lastIndex = 0;
+    let at = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > at) e.appendChild(document.createTextNode(text.slice(at, m.index)));
+      e.appendChild(el('span', 'aspect-word aspect-' + ASPECT_BY_NAME[m[0]], m[0]));
+      at = m.index + m[0].length;
+    }
+    if (at < text.length) e.appendChild(document.createTextNode(text.slice(at)));
+    return e;
+  }
+
   // Facing definition for display (leaders on the board show their unit side).
   function faceDef(card, unit) {
     if (card.type === 'leader' && unit) return card.deployedSide;
@@ -187,10 +222,10 @@
         const row = el('div', 'ability');
         const ci = line.indexOf(':');
         if (ci > 0 && ci < 40) {
-          row.appendChild(el('span', 'trigger', line.slice(0, ci)));
-          row.appendChild(el('span', 'ability-text', line.slice(ci + 1).trim()));
+          row.appendChild(elAspects('span', 'trigger', line.slice(0, ci)));
+          row.appendChild(elAspects('span', 'ability-text', line.slice(ci + 1).trim()));
         } else {
-          row.appendChild(el('span', 'ability-text', line));
+          row.appendChild(elAspects('span', 'ability-text', line));
         }
         detail.appendChild(row);
       });

@@ -61,6 +61,10 @@
 
   // ---- A. hover preview ----------------------------------------------------
   const Preview = SB.preview = {
+    // The enlargement itself, for callers that place it themselves: the preview-size
+    // card, the tokens it creates, and the keyword glossary. The deck picker shows two
+    // of these (a list's leader and its base) before a match exists to hover in.
+    face: function (cardId, unit, state) { return buildRow(cardId, unit, state).row; },
     show: function (anchorEl, cardId, unit, state) {
       const key = unit ? 'i' + unit.uid : 'd' + cardId;
       const box = ensure('preview');

@@ -398,7 +398,9 @@
       const bearer = SB.findUnit(state, action.attachTo);
       expect(bearer && bearer.owner === me && !SB.hasPilot(state, bearer), action);
       p.leader.deployed = 'pilot';
-      const inst = { uid: state.nextUid++, cardId: p.leader.cardId, leaderPilot: true };
+      // owner is the player who DEPLOYED the leader. It is not implied by the bearer:
+      // control of the ship can change hands while the leader aboard it cannot.
+      const inst = { uid: state.nextUid++, cardId: p.leader.cardId, leaderPilot: true, owner: me };
       p.leader.uid = inst.uid;
       bearer.upgrades.push(inst);
       SB.log(state, { type: 'deployLeaderPilot', player: me, cardId: p.leader.cardId, uid: bearer.uid, sound: 'deploy' });
@@ -534,6 +536,7 @@
       if (mods.defeatAtRegroup) unit.defeatAtRegroup = true;
       if (mods.returnAtRegroup) unit.commandeered = { originalOwner: me };
       // "The next unit you play this phase (matching) enters play ready" grants.
+      let grantedReady = false;
       if (p.entersReadyGrants && p.entersReadyGrants.length) {
         const gi = p.entersReadyGrants.findIndex(function (g) {
           const f = g.filter || {};
@@ -541,9 +544,13 @@
           if (f.trait && (card.traits || []).indexOf(f.trait) < 0) return false;
           return true;
         });
-        if (gi >= 0) { p.entersReadyGrants.splice(gi, 1); unit.exhausted = false; }
+        if (gi >= 0) { p.entersReadyGrants.splice(gi, 1); unit.exhausted = false; grantedReady = true; }
       }
       state[card.arena].push(unit);
+      // Say it out loud, and only once the unit is on the board so the line can name it:
+      // a unit that arrives ready looks identical to one the opponent exhausted a moment
+      // later, and from the log alone the player cannot tell which happened.
+      if (grantedReady) SB.log(state, { type: 'arrivedReady', uid: unit.uid, sound: 'buff' });
       if (SB.hasKeyword(state, unit, 'shielded')) {
         unit.shields += 1;
         SB.log(state, { type: 'shield', uid: unit.uid, sound: 'shield' });
@@ -791,11 +798,15 @@
   // 'only while damaged' unit) reads as the gain it is, and one that clears the
   // ENEMY's reads as the gift it is.
   SB.attackBlocked = function (state, u) {
-    // A 0-power attack is legal in the rules but only matters for on-attack triggers;
-    // keep it legal if the unit has one, else it is noise. (Printed abilities only —
+    // A 0-power attack is legal in the rules but only matters when the swing buys something;
+    // keep it legal for an on-attack trigger, Restore, or a when-defeated ability you
+    // collect by throwing the unit into a bigger one; else it is noise. (Printed abilities only —
     // parity with what legalActions did before this predicate was extracted.)
     if (SB.unitPower(state, u) <= 0 && !SB.hasKeyword(state, u, 'saboteur') &&
-        !(SB.unitDef(u).abilities || []).some(function (ab) { return ab.trigger === 'onAttack'; }) &&
+        !(SB.unitDef(u).abilities || []).some(function (ab) {
+          return ab.trigger === 'onAttack' || ab.trigger === 'whenDefeated';
+        }) &&
+        SB.keywordTotal(state, u, 'restore') === 0 &&
         SB.keywordTotal(state, u, 'raid') === 0) return 'noPower';
     if ((SB.unitDef(u).staticFlags || []).indexOf('attackOnlyDamaged') >= 0 && u.damage === 0) {
       return 'undamaged';
@@ -916,7 +927,8 @@
         SB.log(state, { type: 'leaderAction', player: itemStep.player, sound: 'ability' });
       }
       SB.queueEffects(state, itemStep.player, ab.effects,
-        Object.assign({}, itemStep.ctx, { cardId: p.leader.cardId, condition: ab.condition }));
+        Object.assign({}, itemStep.ctx,
+          { viaTrigger: true, cardId: p.leader.cardId, condition: ab.condition }));
     },
   };
 
@@ -1090,9 +1102,7 @@
       u.upgrades.forEach(function (inst) {
         if (inst.leaderPilot) {
           // The bearer leaves play, so the leader-pilot upgrade is defeated with it.
-          const lp = state.players[u.owner].leader;
-          lp.deployed = false; lp.exhausted = true; lp.damage = 0; lp.uid = null;
-          lp.defeated = true;
+          SB.sidelineLeaderPilot(state, u, inst);
         } else if (!SB.card(inst.cardId).token) state.players[original].discard.push(inst);
       });
       SB.log(state, { type: 'returnedToHand', uid: u.uid, cardId: u.cardId });

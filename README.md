@@ -8,8 +8,8 @@ Company.
 
 **Play:** https://dragoonant.github.io/sundered-veil/
 
-Pick a deck and a difficulty on the title screen. Every deck is a registered list from
-`data/decks.js`; the AI plays a deck from the same group.
+Pick your deck, the opponent's deck and a difficulty on the title screen. Every deck is a
+registered list from `data/decks.js`.
 
 ## Running it locally
 

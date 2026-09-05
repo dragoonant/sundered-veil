@@ -490,6 +490,55 @@ also means the search's value depends on `AI.evaluate` ranking the opponent's op
 sensibly — the weights that bought no winrate on their own are still what makes the
 search's pruning honest.
 
+### Does competition earn the name? Measured against random, not just against hard
+
+62.5% against hard, confirmed after the deferred-lethal fix (760 games; the pre-fix run
+was 62.1%, so the fix cost nothing and the difference is noise). But beating hard is a low
+bar — hard piloted six of these lists worse than random. The real question is whether
+competition PILOTS an archetype, and only the random control answers it.
+
+Same seed, same pairings, three policies:
+
+```
+                        winrate spread across the 20 decks
+                   min     max   spread    sd
+hard              19.7    73.7    53.9    14.7
+random            25.0    75.0    50.0    13.6
+competition       34.2    69.7    35.5     8.9
+```
+
+**Competition extracts the decks more evenly than random play does**, which neither hard
+nor random manages: no list is below 34.2% and none above 69.7%, where hard ranged from
+19.7% to 73.7%. Per-deck gap to the same deck under random:
+
+```
+                worst    best    range     sd
+hard            -28.9   +48.7    77.6    16.8
+competition     -17.1   +35.5    52.6    12.9
+```
+
+The worst archetype failure is cut by 40% (-28.9 to -17.1) and the bias sd by a quarter.
+The decks hard threw hardest all recovered: the whenDefeated-reuse deck -28.9 -> -7.9,
+Skarn's Shadow -17.1 -> -7.9, Dray's Audit -15.8 -> -1.3.
+
+**Do not read the "how many decks are below random" count.** It goes 11 -> 14 and means
+nothing: a matrix is zero-sum, its mean is 50% by construction, so tightening the
+distribution pushes marginal decks across the line while the extremes — the numbers that
+actually describe archetype failure — improve. Count the tails, not the crossings.
+
+**What is still broken.** Voss's Full Hand is now the worst at -17.1, and it is the
+credits deck: `credit` and `force` are in the profile and did not fix it, exactly as
+their frequencies predicted (2 decks of 20 each — invisible to a weight, and apparently
+not reachable by depth either). Vale's Vow (-15.8) and Wyn's Foresight (-9.2) are next,
+and both are gate decks: their leaders only pay out when a condition was set up earlier
+in the round.
+
+So: competition is a genuinely stronger and far more even player, and it is honest to
+ship it under that name as a difficulty. It is NOT a tournament pilot. The three decks it
+still fumbles are precisely the ones whose plans live in deck-specific knowledge rather
+than in position value — which is the case for Phase 2, now scoped at three decks instead
+of twenty.
+
 ### Checked and NOT a defect: initiative timing
 
 The fingerprint (tools/ai-fingerprint.mjs, new) showed the AI ending its round by claiming

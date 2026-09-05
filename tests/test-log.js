@@ -168,4 +168,50 @@
       }).join('\n  '));
     }
   });
+  T.add("log: a triggered ability's lines are attributed to it, the action's are not", function () {
+    // The bug this pins: an attack, then its trigger's effects, printed in the same
+    // voice — indistinguishable from the player taking three turns in a row.
+    let s = T.game('fixtureA', 'fixtureB', 'log-via');
+    s.active = 0; s.initiative = 0;
+    const u = T.putOnBoard(s, 0, 'fx-trigger');
+    u.exhausted = false;
+    const before = s.log.length;
+    s = SB.apply(s, { type: 'attack', player: 0, attacker: u.uid, target: { kind: 'base', player: 1 } });
+    let guard = 0;
+    while (s.queue.length && guard++ < 10) {
+      const acts = SB.legalActions(s);
+      if (!acts.length) break;
+      s = SB.apply(s, acts[0]);
+    }
+    const fresh = s.log.slice(before);
+    const attack = fresh.find(function (l) { return l.type === 'attackDeclared'; });
+    const draw = fresh.find(function (l) { return l.type === 'draw'; });
+    T.ok(attack, 'the attack was logged');
+    T.ok(draw, 'the trigger drew');
+    T.eq(attack.via, undefined, 'the ACTION carries no attribution');
+    T.eq(draw.via, 'fx-trigger', 'the CONSEQUENCE names the card that caused it');
+  });
+
+  T.add('log: playing a card does not attribute its own effects to itself', function () {
+    // Only triggered abilities speak for themselves; the effects of a card you played
+    // are already introduced by the "you played X" line above them.
+    let s = T.game('fixtureA', 'fixtureB', 'log-via-play');
+    s.active = 0; s.initiative = 0;
+    T.putOnBoard(s, 1, 'fx-grunt');
+    s.players[0].hand = [];                       // one candidate, so the pick is exact
+    T.putInHand(s, 0, 'fx-bolt');
+    T.giveResources(s, 0, 4);
+    const before = s.log.length;
+    s = T.act(s, { type: 'playCard', cardId: 'fx-bolt' });
+    let guard = 0;
+    while (s.queue.length && guard++ < 10) {
+      const acts = SB.legalActions(s);
+      if (!acts.length) break;
+      s = SB.apply(s, acts[0]);
+    }
+    const tagged = s.log.slice(before).filter(function (l) { return l.via; });
+    T.eq(tagged.length, 0, 'nothing from a played card is attributed (got ' +
+      tagged.map(function (l) { return l.type; }).join(',') + ')');
+  });
+
 })(window.SB = window.SB || {});

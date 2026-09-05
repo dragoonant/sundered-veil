@@ -283,13 +283,25 @@ button:disabled { opacity: .4; cursor: default; }
 .pip.aspects { display: flex; gap: .18rem; align-items: center; }
 .aspect-dot { width: .55em; height: .55em; border-radius: 50%; display: inline-block;
               box-shadow: 0 0 3px rgba(0,0,0,.9); }
-.aspect-vigilance  { background: #4d79d6; }
-.aspect-command    { background: #46a06c; }
-.aspect-aggression { background: #d65045; }
-.aspect-cunning    { background: #e0b24a; }
-.aspect-heroism    { background: #e8ecf5; }
-.aspect-villainy   { background: #8a63d6; }
+.aspect-dot.aspect-vigilance  { background: #4d79d6; }
+.aspect-dot.aspect-command    { background: #46a06c; }
+.aspect-dot.aspect-aggression { background: #d65045; }
+.aspect-dot.aspect-cunning    { background: #e0b24a; }
+.aspect-dot.aspect-heroism    { background: #e8ecf5; }
+.aspect-dot.aspect-villainy   { background: #8a63d6; }
 .card-preview .pip { font-size: .85em; }
+
+/* Aspect names inside rules text wear their aspect's color, matching the corner dots
+   (§ card presentation: the card explains itself without a legend). Slightly lighter
+   than the dots, so they stay readable as text over the plate. */
+.aspect-word { font-weight: 600; }
+.aspect-word.aspect-vigilance  { color: #8fb0f0; }
+.aspect-word.aspect-command    { color: #6fc994; }
+.aspect-word.aspect-aggression { color: #f0837a; }
+.aspect-word.aspect-cunning    { color: #eccb7c; }
+.aspect-word.aspect-heroism    { color: #eef1f8; }
+.aspect-word.aspect-villainy   { color: #b598ea; }
+
 
 /* text plate: shadow only, zero background */
 .card-plate {
@@ -797,6 +809,11 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   color: #cfe0ff; border-bottom: 1px dotted rgba(207,224,255,.5); cursor: help;
 }
 .card-ref:hover, .card-ref:focus { color: #fff; border-bottom-color: #fff; outline: none; }
+/* A triggered ability's line, indented under the action that set it off and prefixed
+   with the card that spoke — so a trigger never reads as another player turn. */
+.log-line.log-via { padding-left: .85rem; border-left: 2px solid rgba(255,255,255,.10); }
+.log-via-src { color: var(--accent); font-weight: 600; opacity: .85; cursor: help; }
+.log-via-src::after { content: ' ›'; opacity: .6; }
 .log-line.has-card { cursor: help; }
 .log-line.has-card:hover { color: #cfe0ff; }
 
@@ -999,6 +1016,49 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   font-weight: 700; color: var(--muted); margin-bottom: .3rem;
 }
 .title-select { width: 100%; font-size: .95rem; padding: .55rem .7rem; }
+/* A slot's current deck: a button, because behind it is a screen, not a list. */
+.title-deck-btn {
+  width: 100%; text-align: left; font-size: 1rem; font-weight: 600;
+  padding: .6rem .75rem; background: rgba(255,255,255,.05); border-color: var(--line);
+}
+.title-deck-btn:hover { background: rgba(255,255,255,.1); border-color: #4b74b8; }
+.title-deck-btn::after { content: '…'; float: right; opacity: .5; }
+
+/* The chooser screen: every deck legible at once, which is the whole point of it. */
+.deck-chooser { min-width: min(58rem, 94vw); max-height: 86vh; overflow-y: auto; }
+.deck-group-label {
+  text-align: left; font-size: .66rem; text-transform: uppercase; letter-spacing: .16em;
+  font-weight: 700; color: var(--muted); margin: 1.1rem 0 .45rem;
+}
+.deck-grid {
+  display: grid; gap: .5rem;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+}
+.deck-choice {
+  display: flex; flex-direction: column; gap: .18rem; align-items: flex-start;
+  text-align: left; padding: .7rem .8rem; min-height: 3.6rem;
+  background: rgba(255,255,255,.05); border-color: var(--line);
+}
+.deck-choice:hover { background: rgba(75,116,184,.28); border-color: #4b74b8; }
+.deck-choice.is-chosen { border-color: var(--accent); background: rgba(255,209,102,.12); }
+.deck-choice-name { font-weight: 700; font-size: .92rem; line-height: 1.15; }
+.deck-choice-meta { font-size: .68rem; color: var(--muted); letter-spacing: .04em; }
+.deck-chooser-actions { display: flex; gap: .5rem; margin-top: 1.3rem; }
+.title-select-btn { flex: 1; padding: .55rem 1rem; font-size: .9rem; }
+
+/* The hover peek: a deck's leader and base, side by side, out of the way of the cursor. */
+.deck-peek {
+  position: fixed; z-index: 120; display: flex; flex-direction: column; gap: .5rem;
+  pointer-events: none;
+  padding: .5rem; border-radius: 12px; background: rgba(8,11,18,.94);
+  border: 1px solid var(--line); box-shadow: 0 18px 60px rgba(0,0,0,.75);
+  animation: deck-peek-in 140ms ease-out;
+}
+/* Opacity only. The panel sets its own transform inline to scale itself into a short
+   window, and a keyframe that touches transform outranks that inline value for as long
+   as it runs — which showed up as the peek refusing to scale at all. */
+@keyframes deck-peek-in { from { opacity: 0; } to { opacity: 1; } }
+
 .title-start {
   margin-top: .8rem; width: 100%; background: #35558a; border-color: #4b74b8;
   font-size: 1rem; font-weight: 700; padding: .7rem 1rem; letter-spacing: .05em;
@@ -1073,6 +1133,19 @@ body.drawer-open #log-handle { opacity: 0; pointer-events: none; }
   18%  { transform: scale(1.05) rotate(0deg); opacity: 1; }
   100% { transform: scale(1.25) rotate(6deg); opacity: 0; }
 }
+/* charges going off inside a card that damaged itself: quicker and dirtier than an
+   impact from outside, and it does not rotate — nothing arrived to knock it askew. */
+.fx-sabotage { animation-name: fx-sabotage; animation-duration: calc(var(--dur, 460ms) * .8); }
+.fx-sabotage.no-sprite {
+  background: radial-gradient(circle, #fff 0%, #ffd08a 25%, rgba(255,90,30,.55) 50%, transparent 72%);
+}
+@keyframes fx-sabotage {
+  0%   { transform: scale(.2); opacity: 0; }
+  15%  { transform: scale(1); opacity: 1; }
+  55%  { transform: scale(.9); opacity: .85; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
 /* the smoke on a dying card lingers for the whole fall */
 .fx-smoke { animation: fx-smoke var(--dur, 1100ms) ease-out forwards; mix-blend-mode: screen; }
 .fx-smoke.no-sprite { border-radius: 50%; background: radial-gradient(circle, rgba(255,200,150,.8) 0%, rgba(120,120,130,.5) 40%, transparent 70%); }

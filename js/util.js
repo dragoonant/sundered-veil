@@ -54,13 +54,45 @@
   // so a line naming two units still names both after either has left the board.
   const LOG_UIDS = { uid: 'cardId', by: 'byCardId', to: 'toCardId', a: 'aCardId', b: 'bCardId',
     attacker: 'attackerCardId', source: 'sourceCardId' };
+  // Two players can field cards with the same name, and then "Han Solo exhausted."
+  // names two different units on two different sides. When that is true AT LOG TIME the
+  // owner is stamped, so the line can say WHOSE — and keeps saying it after the unit dies.
+  // Ambiguity is only ever resolved for the primary subject; secondary actors read from
+  // context. A name is ambiguous if the other seat has a unit that prints the same name.
+  function ambiguousSide(state, u) {
+    if (!SB.allUnits) return null;
+    let mine;
+    try { mine = SB.names.card(u.cardId); } catch (e) { mine = u.cardId; }
+    const clash = SB.allUnits(state, SB.other(u.owner)).some(function (o) {
+      if (o.uid === u.uid) return false;
+      let nm;
+      try { nm = SB.names.card(o.cardId); } catch (e) { nm = o.cardId; }
+      return nm === mine;
+    });
+    return clash ? u.owner : null;
+  }
+  // A triggered ability's effects are CONSEQUENCES of somebody's action, not actions of
+  // their own, and the log used to print them in the same voice: "X attacks your base /
+  // The opponent played Mastery / The opponent banked a resource" reads as three turns
+  // when it is one. While the queue drains a triggered ability, the card doing the
+  // talking is set here, and every entry logged in that window carries it as `via`, so
+  // the panel can attribute and indent instead of leaving the player to guess.
+  let logSource = null;
+  SB.setLogSource = function (cardId) { logSource = cardId == null ? null : cardId; };
+  SB.getLogSource = function () { return logSource; };
+
   SB.log = function (state, entry) {
+    if (logSource != null && entry.via == null) entry.via = logSource;
     if (SB.findUnit) {
       for (const key in LOG_UIDS) {
         const stamp = LOG_UIDS[key];
         if (entry[key] == null || entry[stamp] != null) continue;
         const u = SB.findUnit(state, entry[key]);
         if (u) entry[stamp] = u.cardId;
+        if (u && key === 'uid' && entry.side == null) {
+          const side = ambiguousSide(state, u);
+          if (side != null) entry.side = side;
+        }
       }
     }
     state.log.push(entry);
