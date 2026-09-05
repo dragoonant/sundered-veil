@@ -35,6 +35,10 @@ Suite: `node tools/run-tests.mjs --quiet` → 82 passed. Run it before every com
 
 ## Art
 
+- Delivery files (`art/*.webp`, `art/fx/*.webp`, the two shrunk `.mp4`s, `sfx/*.mp3`) are
+  COMMITTED: GitHub Pages serves the repo root, so the live site has exactly what is in
+  git. `node tools/check-pages.mjs` lists what is missing or untracked. PNG intermediates,
+  masters, thumbs and logs stay ignored.
 - Generate: `node tools/gen-art.mjs [--force] --only <ids>` (FLUX.1-schnell via HF; key from `.hf_token`).
 - Prompts: `tools/art-prompts.json`, rules in `docs/ART-PROMPT-RULES.md`.
 - QC cheaply: `node tools/art-thumbs.mjs --only <ids> --width 256 --sheet <name>` writes

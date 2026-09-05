@@ -107,6 +107,7 @@ reworkable step, so it waits until names and card pool are stable.
   with three difficulties (docs/ai.md).
 - DONE Phase 6 naming: "The Sundered Veil" theme (THEME.md), 414 original names.
 - Art: pipeline live (tools/gen-art.mjs, HF router → FLUX.1-schnell); prompts in
-  tools/art-prompts.json; generated files land in gitignored art/.
+  tools/art-prompts.json; delivery WebPs in art/ are committed and served by GitHub
+  Pages (PAGES-PLAN.md); masters and PNG intermediates stay gitignored.
 - Sound: pipeline built (tools/gen-sfx.mjs + js/sound.js) — BLOCKED on a valid
   ElevenLabs key (.elevenlabs_key is rejected by the API).
