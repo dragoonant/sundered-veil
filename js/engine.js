@@ -536,6 +536,7 @@
       if (mods.defeatAtRegroup) unit.defeatAtRegroup = true;
       if (mods.returnAtRegroup) unit.commandeered = { originalOwner: me };
       // "The next unit you play this phase (matching) enters play ready" grants.
+      let grantedReady = false;
       if (p.entersReadyGrants && p.entersReadyGrants.length) {
         const gi = p.entersReadyGrants.findIndex(function (g) {
           const f = g.filter || {};
@@ -543,9 +544,13 @@
           if (f.trait && (card.traits || []).indexOf(f.trait) < 0) return false;
           return true;
         });
-        if (gi >= 0) { p.entersReadyGrants.splice(gi, 1); unit.exhausted = false; }
+        if (gi >= 0) { p.entersReadyGrants.splice(gi, 1); unit.exhausted = false; grantedReady = true; }
       }
       state[card.arena].push(unit);
+      // Say it out loud, and only once the unit is on the board so the line can name it:
+      // a unit that arrives ready looks identical to one the opponent exhausted a moment
+      // later, and from the log alone the player cannot tell which happened.
+      if (grantedReady) SB.log(state, { type: 'arrivedReady', uid: unit.uid, sound: 'buff' });
       if (SB.hasKeyword(state, unit, 'shielded')) {
         unit.shields += 1;
         SB.log(state, { type: 'shield', uid: unit.uid, sound: 'shield' });

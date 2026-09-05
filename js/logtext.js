@@ -27,13 +27,17 @@
   // The name of whatever a log entry is about. cardId is stamped at push time so
   // this survives the card leaving play; the state lookup is only a fallback for
   // older entries, and 'a unit' is the last resort (never "[undefined]").
+  // 'side' is stamped by SB.log only when the other seat fielded a card of the same
+  // name, so the qualifier appears exactly where the bare name would be a riddle.
   function name(l, state) {
-    if (l.cardId) return SB.names.card(l.cardId);
-    if (state && l.uid != null && SB.findUnit) {
+    let nm = null;
+    if (l.cardId) nm = SB.names.card(l.cardId);
+    else if (state && l.uid != null && SB.findUnit) {
       const u = SB.findUnit(state, l.uid);
-      if (u) return SB.names.card(u.cardId);
+      if (u) nm = SB.names.card(u.cardId);
     }
-    return 'a unit';
+    if (nm == null) return 'a unit';
+    return l.side == null ? nm : theirs(l.side) + ' ' + nm;
   }
   // Secondary actors: the stamped id first (survives death), then the live state.
   function nameOf(uid, state, fallback, stampedCardId) {
@@ -137,7 +141,7 @@
     bountyCollected: function (l, s) { return 'A bounty on ' + name(l, s) + ' was collected.'; },
 
     // --- unit state ---
-    exhausted: function (l, s) { return name(l, s) + ' exhausted.'; },
+    exhausted: function (l, s) { return name(l, s) + ' was exhausted.'; },
     readied: function (l, s) { return name(l, s) + ' readied.'; },
     stunned: function (l, s) { return name(l, s) + ' was stunned.'; },
     unitAction: function (l, s) { return name(l, s) + ' used an ability.'; },
@@ -182,6 +186,7 @@
     // --- competitive expansion (js/ops2.js) ---
     abilitiesSuppressed: function (l, s) { return name(l, s) + ' lost all its abilities.'; },
     readyGrantArmed: function (l) { return possessive(l.player) + ' next matching unit will arrive ready.'; },
+    arrivedReady: function (l, s) { return name(l, s) + ' arrived ready.'; },
     abilityBorrowed: function (l, s) { return 'The last-words ability of ' + name(l, s) + ' was used.'; },
     abilityRepeated: function (l) { return 'The last-words ability of ' + cardName(l.cardId) + ' was used again.'; },
     copiesPurged: function (l) { return player(l.player) + ' lost ' + n(l.amount, 'copy', 'copies') + ' of ' + cardName(l.cardId) + ' from hand and deck.'; },
