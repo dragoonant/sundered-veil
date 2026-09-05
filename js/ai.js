@@ -34,6 +34,7 @@
     deathPayoff: 1,
     deathPayoffEnemy: 1,
     exchangeWidth: 0,      // 0 = no exchange search (base difficulties keep one ply)
+    winNow: 0,             // (competition; see PROFILES)
     initiative: 6,         // acting first next round
     leaderDeployed: 10,    // a leader unit is a strong body with upside
     // Penalties (policy that position value can't express):
@@ -65,6 +66,13 @@
     // magnitude tried. Do not re-enable it without a gauntlet that says otherwise.
     deathPayoff: 1,
     deathPayoffEnemy: 1,
+    // A win in hand beats a win the search believes it can still have next action. The
+    // search sees that a lethal attacker is still lethal after a detour, scores both
+    // lines at ~200000, and then tie-breaks on board development — so it plays a card
+    // first and hands the opponent a free action to find a sentinel, a heal or a shield.
+    // Depth created this; one ply could not see the deferred win at all. Immediate lethal
+    // outranks any line that merely leads to lethal.
+    winNow: 1000,
     // How many of the opponent's replies to weigh in the exchange. 3 measured 62.1%
     // against hard over 760 games; the shape of the curve either side of it is being
     // measured (--weights exchangeWidth=N).
@@ -218,6 +226,8 @@
         // Replaces the one-reply swing penalty below: the exchange prices the reply AND
         // my answer to it, which a swing term never could.
         v = exchangeValue(after, me, P.exchangeWidth) - wasted;
+        // ...but never search past a game that is already won: take it.
+        if (SB.isTerminal(after) && after.winner === me) v = AI.evaluate(after, me) + P.winNow;
       }
       // Hard: one-ply min over the opponent's best reply.
       if (difficulty === 'hard' && !SB.isTerminal(after) && after.queue.length === 0 &&

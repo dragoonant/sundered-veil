@@ -152,6 +152,54 @@
       'a resource outvalues a credit');
   });
 
+  // ---- competition must clear the same bar as hard, not just beat it -----------
+  // A difficulty called Competition that misses lethal, or feeds a grit unit, is not
+  // competitive whatever its gauntlet says. These are the fundamentals, re-asserted
+  // against the deeper search.
+  T.add('competition: takes lethal on the base over anything else', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'comp-lethal');
+    const me = s.active, foe = SB.other(me);
+    s.players[foe].base.damage = 28;
+    T.putOnBoard(s, me, 'fx-brute');
+    const uid = s.ground[s.ground.length - 1].uid;
+    const act = SB.ai.chooseAction(s, 'competition');
+    T.eq(act.type, 'attack', 'attacks');
+    T.eq(act.attacker, uid, 'with the brute');
+    T.eq(act.target.kind, 'base', 'at the base');
+  });
+
+  T.add('competition: does not pass while holding playable interaction', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'comp-removal');
+    s.active = 0; s.initiative = 0;
+    T.putOnBoard(s, 1, 'fx-brute');
+    T.putInHand(s, 0, 'fx-bolt');
+    T.putInHand(s, 0, 'fx-bolt');
+    T.giveResources(s, 0, 2);
+    const act = SB.ai.chooseAction(s, 'competition');
+    T.ok(act.type !== 'pass', 'does something (got ' + act.type + ')');
+  });
+
+  T.add('competition: does not feed a grit unit for nothing', function () {
+    let s = T.game('fixtureA', 'fixtureB', 'comp-trade');
+    s.active = 0; s.initiative = 0;
+    const mine = T.putOnBoard(s, 0, 'fx-grunt');
+    T.putOnBoard(s, 1, 'fx-gritty');
+    const act = SB.ai.chooseAction(s, 'competition');
+    if (act.type === 'attack' && act.attacker === mine.uid) {
+      T.eq(act.target.kind, 'base', 'prefers the base over pumping grit');
+    }
+  });
+
+  T.add('competition: a full game against hard terminates with a winner', function () {
+    let s = SB.newGame({ deck0: 'deck-c12', deck1: 'deck-c20', seed: 'comp-vs-hard' });
+    let n = 0;
+    while (!SB.isTerminal(s)) {
+      if (++n > 2500) throw new Error('game did not terminate');
+      s = SB.apply(s, SB.ai.chooseAction(s, SB.whoActs(s) === 0 ? 'competition' : 'hard'));
+    }
+    T.ok(s.winner === 0 || s.winner === 1, 'winner: ' + s.winner + ' in ' + n + ' actions');
+  });
+
   T.add('ai: full game vs itself terminates with a winner (mid)', function () {
     let s = SB.newGame({ deck0: 'deck-s1a', deck1: 'deck-s1b', seed: 'aivai' });
     let n = 0;
