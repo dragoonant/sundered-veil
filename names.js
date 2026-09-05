@@ -80,9 +80,10 @@
       browseClose: 'Close',
       browseEmpty: 'Nothing here yet.',
       yourDiscard: 'Your discard pile', theirDiscard: 'Opponent discard pile',
-      yourResources: 'Your resources',
+      yourResources: 'Your resources', theirResources: 'Opponent resources',
       browseNewestFirst: 'Most recent first',
       browseResourceNote: 'Face down on the board — only you may look.',
+      browseResourceOver: 'Face down during play; the game is over, so they turn up.',
       // Board zone labels. The board draws these itself now (js/boardart.js); they
       // were pixels baked into the old mat image, which put display text outside
       // this file. Rendered in caps by the board, so written here in normal case.

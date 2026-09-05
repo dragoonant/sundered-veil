@@ -357,6 +357,13 @@
     SB.preview && SB.preview.attach(node, L.cardId, null, function () { return UI.state; });
   }
 
+  // Once the game is over there is nothing left to protect: the hand you were playing
+  // against, and the resources you never got to see, turn face up so the match can be
+  // read back. Hidden information keeps a LIVE game fair, and the game is no longer
+  // live. Everything revealed this way is an ordinary face-up card, so it previews on
+  // hover and focus like any other.
+  function postMortem(s) { return SB.isTerminal(s); }
+
   // Their hand, face down, at the top of the board. The same overlap fan as yours, so
   // a twelve-card hand still fits, and the same renderer, so a card an effect reveals
   // can simply be drawn face up in place.
@@ -365,7 +372,7 @@
     node.textContent = '';
     const hand = s.players[SB.other(UI.humanSeat)].hand;
     hand.forEach(function (inst, i) {
-      const revealed = !!inst.revealed;
+      const revealed = !!inst.revealed || postMortem(s);
       const c = SB.renderCard({ cardId: inst.cardId, hidden: !revealed },
         { size: 'hand', state: s });
       c.classList.add('enemy-hand-card');
@@ -419,14 +426,20 @@
   // Resources are face down — their identities must stay hidden or a trick card played
   // from a resource would be readable in advance. Exhausted ones tip a few degrees, the
   // tabletop's "tapped", and the whole row overlaps so a 20-resource late game still fits.
-  function renderResourceRow(node, res) {
+  function renderResourceRow(node, res, s) {
     node.textContent = '';
     const fan = el('div', 'res-fan');
+    const open = !!s && postMortem(s);   // after the match: nothing can be played from them
     fan.style.setProperty('--n', String(res.length));
     res.forEach(function (r) {
-      const c = SB.renderCard({ cardId: r.instance ? r.instance.cardId : r.cardId, hidden: true },
-        { size: 'board' });
+      const cardId = r.instance ? r.instance.cardId : r.cardId;
+      const c = SB.renderCard({ cardId: cardId, hidden: !open }, { size: 'board', state: s });
       if (r.exhausted) c.classList.add('is-spent');
+      if (open) {
+        c.classList.add('is-revealed');
+        c.tabIndex = 0;
+        SB.preview && SB.preview.attach(c, cardId, null, function () { return UI.state; });
+      }
       fan.appendChild(c);
     });
     node.appendChild(fan);
@@ -611,7 +624,7 @@
       // The discard is public in both directions, so its top card shows its face.
       renderPile($(pair[0] + '-discard'), s, p.discard,
         p.discard.length ? p.discard[p.discard.length - 1].cardId : null);
-      renderResourceRow($(pair[0] + '-res'), p.resources);
+      renderResourceRow($(pair[0] + '-res'), p.resources, s);
       renderForce($(pair[0] + '-force'), s, pair[1]);
 
       // Both discards browse — a discard pile is public information either way. Newest
@@ -622,10 +635,13 @@
       // Only YOUR resources browse. They are face down to everyone, but you banked
       // them and know what they are; the opponent's stay hidden or a Smuggle played
       // out of their resource row would be readable in advance.
-      if (mine) {
-        makeBrowsable($(pair[0] + '-res'), SB.names.ui.yourResources,
+      // ...and once it is over, THEIR row browses too: the reason for the asymmetry has
+      // expired with the game.
+      if (mine || postMortem(s)) {
+        makeBrowsable($(pair[0] + '-res'),
+          mine ? SB.names.ui.yourResources : SB.names.ui.theirResources,
           p.resources.map(function (r) { return r.instance || r; }), s,
-          SB.names.ui.browseResourceNote);
+          mine && !postMortem(s) ? SB.names.ui.browseResourceNote : SB.names.ui.browseResourceOver);
       }
     });
   }
