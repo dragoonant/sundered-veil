@@ -54,6 +54,7 @@ button:disabled { opacity: .4; cursor: default; }
 /* Sections must keep their content height: a shrinking flex child lets card rows
    visually spill over its neighbors instead of making #board scroll. */
 #board > * { flex-shrink: 0; }
+#board > #mat { flex-shrink: 1; }   /* the one row that yields — see #mat */
 /* ================= the mat =================
    The play surface is DRAWN, not photographed: js/boardart.js renders it as an SVG
    whose 2048x1280 viewBox is a coordinate space, not a resolution — the board is
@@ -69,9 +70,19 @@ button:disabled { opacity: .4; cursor: default; }
      board allows, or as wide as ~2/3 of the board's height permits, whichever is less".
      Clamping the WIDTH (rather than max-height) keeps aspect-ratio honest: a clamped
      height with a full width would stretch the painted slots away from their zones. */
-  /* 66cqh before both hands were on screen; their row costs the same as yours, so
-     the mat gives that height back rather than pushing your hand off the bottom. */
-  width: min(100cqw, 62cqh * 2048 / 1280);
+  /* It was 62cqh — a fixed share that left a band of black under the hand on any
+     window that was not the one it was tuned for, and on a wide monitor made the mat
+     a small box in the middle of the screen. Now the mat is the column's flexible row:
+     it takes whatever height the two hands and the turn bar leave, and its WIDTH
+     follows from that height through the aspect ratio (a flexed main size transfers
+     across an aspect-ratio when the item is not stretched, hence align-self: center).
+     max-height keeps the width-limited case: on a tall window the height is capped
+     at what a board-wide mat would be, and the width follows from THAT. (A max-width
+     would not do: flex would still hand the mat the whole leftover height and the
+     clamped width would stretch the painted slots away from their zones.) cq units
+     resolve against #board here, so 100cqw is the width the board has to give. */
+  flex: 1 1 0; min-height: 0; align-self: center;
+  width: auto; max-height: calc(100cqw * 1280 / 2048);
   aspect-ratio: 2048 / 1280;   /* matches the board's viewBox, so nothing letterboxes */
   margin: 0 auto;
   container-type: size;
