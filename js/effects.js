@@ -50,9 +50,12 @@
           if (!ok) return;
         }
         if (sel.sameArenaAsSaved) {
+          // The saved unit may already be gone (the first hit of a two-hit event
+          // defeated it), so fall back to the arena stamped at save time.
           const t = SB.efx(state, ctx)[sel.sameArenaAsSaved];
           const su = t && t.kind === 'unit' ? SB.findUnit(state, t.uid) : null;
-          if (!su || SB.arenaOf(state, u) !== SB.arenaOf(state, su)) return;
+          const arena = su ? SB.arenaOf(state, su) : (t && t.arena);
+          if (!arena || SB.arenaOf(state, u) !== arena) return;
         }
         if (sel.powerLteSaved) {
           const t = SB.efx(state, ctx)[sel.powerLteSaved];
@@ -401,7 +404,14 @@
   // that path is handled in drainQueue and applyQueueAction via SB.execElse).
   const DAMAGE_OPS = ['damage', 'damageAll', 'dividedDamage', 'damageOwnBase', 'damagePerExploited'];
   SB.execOp = function (state, item, target) {
-    if (item.op.saveTargetAs && target) SB.efx(state, item.ctx)[item.op.saveTargetAs] = target;
+    if (item.op.saveTargetAs && target) {
+      // Stamp the arena so later selectors (sameArenaAsSaved) still work after
+      // this op defeats or moves the unit.
+      const saved = Object.assign({}, target);
+      const su = target.kind === 'unit' ? SB.findUnit(state, target.uid) : null;
+      if (su) saved.arena = SB.arenaOf(state, su);
+      SB.efx(state, item.ctx)[item.op.saveTargetAs] = saved;
+    }
     SB.ops[item.op.op](state, item, target);
     if (item.op.then && item.op.then.length) {
       SB.queueEffects(state, item.controller, item.op.then, item.ctx);

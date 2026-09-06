@@ -452,6 +452,34 @@
     T.ok(!SB.findUnit(s, cheap.uid), 'the 3-cost unit died');
   });
 
+  T.add('expansion: a two-hit event still finds its second target after the first hit kills the saved unit', function () {
+    // sec-180: 3 damage to a unit, then (with initiative) 2 damage to another unit
+    // in the same arena. The 3 damage defeated the first target, so the "same
+    // arena as the chosen unit" lookup found nothing and the 2 damage fizzled
+    // with an enemy still sitting in that arena.
+    let s = T.game();
+    s.active = 1; s.initiative = 1;
+    const first = T.putOnBoard(s, 0, 'fx-flyer');     // space, hp 2: dies to the 3
+    const second = T.putOnBoard(s, 0, 'fx-flyer');    // space: the legal follow-up
+    const grounded = T.putOnBoard(s, 0, 'fx-grunt');  // ground: never legal for the 2
+    s = rich(s, 1);
+    s = play(s, 1, 'sec-180');
+    const pick = function (st, uid) {
+      const i = st.queue[0].candidates.findIndex(function (c) { return c.uid === uid; });
+      T.ok(i >= 0, 'unit ' + uid + ' is offered');
+      return T.act(st, { type: 'choose', index: i });
+    };
+    s = pick(s, first.uid);
+    T.ok(!SB.findUnit(s, first.uid), 'the first hit killed its target');
+    T.eq(s.queue[0] && s.queue[0].step, 'effect', 'the second hit is asking for a target');
+    const uids = s.queue[0].candidates.map(function (c) { return c.uid; });
+    T.deepEq(uids, [second.uid], 'the other space unit is the one legal target');
+    T.ok(uids.indexOf(grounded.uid) < 0, 'the ground unit is not offered');
+    s = pick(s, second.uid);
+    T.ok(!SB.findUnit(s, second.uid), 'and the 2 damage defeats it (hp 2)');
+    T.ok(SB.findUnit(s, grounded.uid), 'the ground unit was never touched');
+  });
+
   T.add("expansion: the opponent, not the hand owner, picks the card discarded by ash-220", function () {
     let s = rich(T.game(), 1);
     T.putInHand(s, 0, "sor-045");
